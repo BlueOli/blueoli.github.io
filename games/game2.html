@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Spectral Bloom</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height:100%; margin:0; background:#070a12; overflow:hidden; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .ui {
+      position: fixed; inset: 0; pointer-events:none;
+      display:flex; flex-direction:column; justify-content:space-between;
+      padding: 14px 14px 16px;
+    }
+    .topbar, .bottombar {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .pill{
+      pointer-events:none;
+      display:inline-flex; align-items:center; gap:10px;
+      padding: 8px 12px; border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(8px);
+      color: rgba(255,255,255,.82);
+      font-size: 13px;
+      letter-spacing:.2px;
+    }
+    .kbd{
+      padding:2px 8px; border-radius:10px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-bottom-width:2px;
+      background: rgba(255,255,255,.06);
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,.9);
+    }
+    #c { display:block; width:100vw; height:100vh; }
+    .centerToast{
+      position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+      padding: 14px 16px; border-radius: 18px;
+      background: rgba(5,8,18,.55);
+      border: 1px solid rgba(255,255,255,.14);
+      color: rgba(255,255,255,.9);
+      text-align:center;
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      backdrop-filter: blur(10px);
+      min-width: min(520px, 90vw);
+      pointer-events:none;
+    }
+    .title{ font-weight:800; font-size: 22px; letter-spacing:.6px; margin-bottom:6px; }
+    .sub{ opacity:.85; font-size: 14px; line-height:1.35; }
+    .hint{ margin-top:10px; opacity:.9; font-size:13px; }
+    .small{ opacity:.75; font-size:12px; margin-top:6px; }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="topbar">
+    <div class="pill">
+      <span style="font-weight:700; letter-spacing:.6px;">SPECTRAL BLOOM</span>
+      <span style="opacity:.7;">•</span>
+      <span>Move <span class="kbd">WASD</span>/<span class="kbd">Arrows</span></span>
+      <span>Pulse <span class="kbd">Space</span>/<span class="kbd">Mouse</span></span>
+      <span>Restart <span class="kbd">R</span></span>
+      <span>Quality <span class="kbd">Q</span></span>
+    </div>
+    <div class="pill">
+      <span>Score: <span id="score" style="font-weight:800;">0</span></span>
+      <span style="opacity:.7;">•</span>
+      <span>Best: <span id="best" style="font-weight:800;">0</span></span>
+      <span style="opacity:.7;">•</span>
+      <span>Combo: <span id="combo" style="font-weight:800;">x1</span></span>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="pill">
+      <span>Energy</span>
+      <span style="width:140px; height:10px; border-radius:999px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.12); overflow:hidden;">
+        <span id="energyFill" style="display:block; height:100%; width:100%; background:linear-gradient(90deg, rgba(120,255,220,.9), rgba(120,170,255,.9));"></span>
+      </span>
+      <span id="quality" style="opacity:.85;">HQ</span>
+    </div>
+    <div class="pill" id="status">Bloom to score. Avoid thorns.</div>
+  </div>
+</div>
+
+<div class="centerToast" id="toast">
+  <div class="title">SPECTRAL BLOOM</div>
+  <div class="sub">
+    You are a light seed in a neon garden.<br/>
+    Pulse to bloom flowers (score) — recoil moves you. Chain blooms quickly for combo.
+  </div>
+  <div class="hint">
+    <span class="kbd">Space</span> / Click = Pulse • <span class="kbd">WASD</span> = Drift • <span class="kbd">R</span> = Restart
+  </div>
+  <div class="small">Tip: Pulse near flowers for huge chains — but thorns love predictable paths.</div>
+</div>
+
+<script>
+(() => {
+  // ======= Canvas & scaling =======
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  let DPR = Math.min(2, devicePixelRatio || 1);
+  let W=0,H=0;
+
+  // Offscreen for bloom/post
+  const off = document.createElement('canvas');
+  const octx = off.getContext('2d', { alpha: true });
+
+  // small buffer for blur/bloom
+  const blurA = document.createElement('canvas');
+  const blurB = document.createElement('canvas');
+  const bctxA = blurA.getContext('2d', { alpha: true });
+  const bctxB = blurB.getContext('2d', { alpha: true });
+
+  let HQ = true;
+
+  function resize(){
+    W = Math.floor(innerWidth * DPR);
+    H = Math.floor(innerHeight * DPR);
+    canvas.width = W; canvas.height = H;
+
+    off.width = W; off.height = H;
+
+    // bloom buffers smaller for performance
+    const s = HQ ? 0.5 : 0.33;
+    blurA.width = Math.floor(W*s); blurA.height = Math.floor(H*s);
+    blurB.width = blurA.width; blurB.height = blurA.height;
+
+    ctx.imageSmoothingEnabled = true;
+    octx.imageSmoothingEnabled = true;
+    bctxA.imageSmoothingEnabled = true;
+    bctxB.imageSmoothingEnabled = true;
+  }
+  addEventListener('resize', () => { DPR = Math.min(2, devicePixelRatio || 1); resize(); });
+  resize();
+
+  // ======= UI =======
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const comboEl = document.getElementById('combo');
+  const energyFill = document.getElementById('energyFill');
+  const toast = document.getElementById('toast');
+  const status = document.getElementById('status');
+  const qualityEl = document.getElementById('quality');
+
+  const BEST_KEY = "spectral_bloom_best_v1";
+  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  bestEl.textContent = best;
+
+  // ======= Helpers =======
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const rand = (a,b)=>a+Math.random()*(b-a);
+  const randi = (a,b)=>Math.floor(rand(a,b+1));
+  const hypot = Math.hypot;
+
+  function easeOut(t){ return 1 - Math.pow(1-t, 3); }
+  function easeInOut(t){ return t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+  // nice spectral gradient based on "hue" value
+  function spectralColor(h, a=1){
+    // h in [0,1]
+    const x = (h*6)%6;
+    const c = 1;
+    const m = 0;
+    let r=0,g=0,b=0;
+    if (x<1){ r=c; g=x; b=0; }
+    else if (x<2){ r=2-x; g=c; b=0; }
+    else if (x<3){ r=0; g=c; b=x-2; }
+    else if (x<4){ r=0; g=4-x; b=c; }
+    else if (x<5){ r=x-4; g=0; b=c; }
+    else { r=c; g=0; b=6-x; }
+    r = Math.floor((r+m)*255);
+    g = Math.floor((g+m)*255);
+    b = Math.floor((b+m)*255);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  // 2D value noise (fast-ish) for flow field
+  const NOISE_SIZE = 256;
+  const noise = new Float32Array(NOISE_SIZE*NOISE_SIZE);
+  for (let i=0;i<noise.length;i++) noise[i] = Math.random();
+
+  function smoothstep(t){ return t*t*(3-2*t); }
+  function noise2(x,y){
+    // x,y in float coordinates
+    const xi = Math.floor(x) & (NOISE_SIZE-1);
+    const yi = Math.floor(y) & (NOISE_SIZE-1);
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+
+    const a = noise[yi*NOISE_SIZE + xi];
+    const b = noise[yi*NOISE_SIZE + ((xi+1)&(NOISE_SIZE-1))];
+    const c = noise[((yi+1)&(NOISE_SIZE-1))*NOISE_SIZE + xi];
+    const d = noise[((yi+1)&(NOISE_SIZE-1))*NOISE_SIZE + ((xi+1)&(NOISE_SIZE-1))];
+
+    const u = smoothstep(xf);
+    const v = smoothstep(yf);
+
+    return lerp(lerp(a,b,u), lerp(c,d,u), v);
+  }
+
+  function flowAngle(x,y,time){
+    // world coords -> stable flow; time adds slow drift
+    const s = 0.0025;
+    const n = noise2(x*s + time*0.02, y*s - time*0.015);
+    return n * Math.PI * 2.0;
+  }
+
+  // ======= Input =======
+  const keys = new Set();
+  let mouseDown = false;
+  let mouseX = 0, mouseY = 0;
+
+  addEventListener('keydown', (e)=>{
+    const k = e.key.toLowerCase();
+    keys.add(k);
+    if (k === 'r') reset();
+    if (k === 'q') toggleQuality();
+    if (k === ' ') { mouseDown = true; e.preventDefault(); }
+  }, { passive:false });
+
+  addEventListener('keyup', (e)=>{
+    const k = e.key.toLowerCase();
+    keys.delete(k);
+    if (k === ' ') mouseDown = false;
+  });
+
+  addEventListener('pointerdown', (e)=>{
+    mouseDown = true;
+    toast.style.display = 'none';
+  });
+  addEventListener('pointerup', ()=> mouseDown = false);
+  addEventListener('pointermove', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - rect.left) * DPR;
+    mouseY = (e.clientY - rect.top) * DPR;
+  });
+
+  // ======= Game State =======
+  const state = {
+    t: 0,
+    score: 0,
+    combo: 1,
+    comboTimer: 0,
+    alive: true,
+    shake: 0,
+    vignette: 0.45,
+    messageTimer: 0,
+    msg: "Bloom to score. Avoid thorns.",
+    quality: "HQ"
+  };
+
+  const player = {
+    x: W*0.5, y: H*0.55,
+    vx: 0, vy: 0,
+    r: 10*DPR,
+    energy: 1.0,
+    pulseCharge: 0,
+    hue: Math.random(),
+    invuln: 0
+  };
+
+  const flowers = [];
+  const thorns = [];
+  const particles = [];
+  const ribbons = []; // trail segments
+
+  function setStatus(text, seconds=2){
+    state.msg = text;
+    state.messageTimer = seconds;
+    status.textContent = text;
+  }
+
+  function toggleQuality(){
+    HQ = !HQ;
+    qualityEl.textContent = HQ ? "HQ" : "LQ";
+    setStatus(HQ ? "High Quality enabled" : "Low Quality enabled", 1.5);
+    resize();
+  }
+
+  // ======= Entities =======
+  function spawnFlower(x,y){
+    flowers.push({
+      x, y,
+      r: rand(18, 34) * DPR,
+      hue: Math.random(),
+      life: 0,
+      max: rand(5.5, 8.5),
+      petals: randi(7, 12),
+      rot: rand(0, Math.PI*2),
+      wob: rand(0.6, 1.4),
+      grown: false
+    });
+  }
+
+  function spawnThorn(){
+    // Spawn outside camera edges
+    const margin = 160*DPR;
+    const side = randi(0,3);
+    let x,y;
+    if (side===0){ x = -margin; y = rand(0,H); }
+    if (side===1){ x = W+margin; y = rand(0,H); }
+    if (side===2){ x = rand(0,W); y = -margin; }
+    if (side===3){ x = rand(0,W); y = H+margin; }
+
+    thorns.push({
+      x, y,
+      vx: 0, vy: 0,
+      r: rand(16, 28) * DPR,
+      rot: rand(0, Math.PI*2),
+      spin: rand(-2.5, 2.5),
+      hue: 0.02 + Math.random()*0.06, // reddish
+      aggression: rand(0.7, 1.2),
+      phase: rand(0, 10)
+    });
+  }
+
+  function burst(x,y, hue, power=1){
+    const count = Math.floor(22 * power * (HQ?1:0.7));
+    for (let i=0;i<count;i++){
+      const a = rand(0, Math.PI*2);
+      const sp = rand(90, 420) * DPR * power;
+      particles.push({
+        x, y,
+        vx: Math.cos(a)*sp,
+        vy: Math.sin(a)*sp,
+        life: 0,
+        max: rand(0.55, 1.2),
+        size: rand(1.2, 3.2) * DPR,
+        hue: (hue + rand(-0.08, 0.08) + 1) % 1,
+        type: (Math.random()<0.18 ? "spark" : "dot")
+      });
+    }
+  }
+
+  function addRibbon(x,y, hue){
+    ribbons.push({ x,y, hue, life: 0, max: 0.8, w: rand(8, 16)*DPR });
+    if (ribbons.length > (HQ?220:120)) ribbons.shift();
+  }
+
+  function reset(){
+    state.t = 0;
+    state.score = 0;
+    state.combo = 1;
+    state.comboTimer = 0;
+    state.alive = true;
+    state.shake = 0;
+    player.x = W*0.5; player.y = H*0.55;
+    player.vx = 0; player.vy = 0;
+    player.energy = 1;
+    player.pulseCharge = 0;
+    player.hue = Math.random();
+    player.invuln = 1.0;
+
+    flowers.length = 0;
+    thorns.length = 0;
+    particles.length = 0;
+    ribbons.length = 0;
+
+    // seed the garden
+    for (let i=0;i<22;i++){
+      spawnFlower(rand(W*0.08, W*0.92), rand(H*0.1, H*0.9));
+    }
+    for (let i=0;i<7;i++) spawnThorn();
+
+    scoreEl.textContent = "0";
+    comboEl.textContent = "x1";
+    toast.style.display = "";
+    setStatus("Bloom to score. Avoid thorns.", 2.5);
+  }
+
+  reset();
+
+  // ======= Game Logic =======
+  function doPulse(dt){
+    // Charge while holding (costs energy); release creates pulse
+    if (mouseDown && state.alive){
+      toast.style.display = 'none';
+      // build charge
+      const chargeRate = 1.1;
+      const energyCost = 0.32 * dt;
+      if (player.energy > 0.02){
+        player.pulseCharge = clamp(player.pulseCharge + chargeRate * dt, 0, 1.15);
+        player.energy = clamp(player.energy - energyCost, 0, 1);
+      } else {
+        player.pulseCharge = clamp(player.pulseCharge - 1.8*dt, 0, 1.2);
+      }
+    } else {
+      if (player.pulseCharge > 0.08 && state.alive){
+        // release pulse
+        const p = player.pulseCharge;
+        player.pulseCharge = 0;
+
+        const px = player.x, py = player.y;
+        const dx = (mouseX || px) - px;
+        const dy = (mouseY || py) - py;
+        const len = Math.max(1, Math.hypot(dx,dy));
+        const nx = dx/len, ny = dy/len;
+
+        // recoil opposite direction (movement-by-pulse)
+        const recoil = (260 + 520*p) * DPR;
+        player.vx += -nx * recoil;
+        player.vy += -ny * recoil;
+
+        // shock visuals
+        state.shake = Math.max(state.shake, 0.22 + 0.22*p);
+        burst(px, py, player.hue, 0.9 + 0.9*p);
+
+        // affect flowers & thorns
+        const radius = (90 + 140*p) * DPR;
+        let bloomed = 0;
+
+        for (const f of flowers){
+          const d = Math.hypot(f.x - px, f.y - py);
+          if (d < radius){
+            // bloom if young enough
+            if (!f.grown){
+              f.life += (0.9 + 1.1*p) * (1 - d/radius);
+              if (f.life > 1.2){
+                f.grown = true;
+                bloomed++;
+                // scoring & combo
+                const now = state.t;
+                if (state.comboTimer > 0) state.combo = Math.min(12, state.combo + 1);
+                else state.combo = 1;
+                state.comboTimer = 1.25;
+
+                const gain = Math.floor(18 * state.combo * (0.7 + 0.6*p));
+                state.score += gain;
+
+                burst(f.x, f.y, f.hue, 1.0 + 0.6*p);
+              }
+            }
+            // push petals particles
+            const push = (120 + 280*p) * (1 - d/radius) * DPR;
+            const ax = (f.x - px) / (d+0.001);
+            const ay = (f.y - py) / (d+0.001);
+            particles.push({
+              x: f.x + ax*f.r*0.4, y: f.y + ay*f.r*0.4,
+              vx: ax*push + rand(-30,30)*DPR,
+              vy: ay*push + rand(-30,30)*DPR,
+              life: 0, max: rand(0.5, 1.2),
+              size: rand(1.2, 3.0)*DPR,
+              hue: f.hue, type:"petal"
+            });
+          }
+        }
+
+        for (const th of thorns){
+          const d = Math.hypot(th.x - px, th.y - py);
+          if (d < radius){
+            const ax = (th.x - px)/(d+0.001);
+            const ay = (th.y - py)/(d+0.001);
+            const push = (180 + 520*p) * (1 - d/radius) * DPR;
+            th.vx += ax*push;
+            th.vy += ay*push;
+          }
+        }
+
+        if (bloomed>0) setStatus(`Bloom chain! +${bloomed} (combo ${state.combo})`, 1.1);
+      } else {
+        player.pulseCharge = 0;
+      }
+    }
+  }
+
+  function update(dt){
+    state.t += dt;
+
+    // UI timers
+    if (state.messageTimer > 0){
+      state.messageTimer -= dt;
+      if (state.messageTimer <= 0) status.textContent = "Bloom to score. Avoid thorns.";
+    }
+
+    // Combo decay
+    if (state.comboTimer > 0){
+      state.comboTimer -= dt;
+      if (state.comboTimer <= 0) {
+        state.combo = 1;
+      }
+    }
+
+    // regen energy
+    const regen = 0.22 * dt * (mouseDown ? 0.25 : 1);
+    player.energy = clamp(player.energy + regen, 0, 1);
+    energyFill.style.width = `${Math.floor(player.energy*100)}%`;
+
+    // Movement input (gentle drift)
+    const up = keys.has('w') || keys.has('arrowup');
+    const down = keys.has('s') || keys.has('arrowdown');
+    const left = keys.has('a') || keys.has('arrowleft');
+    const right = keys.has('d') || keys.has('arrowright');
+    let ix = (right?1:0) - (left?1:0);
+    let iy = (down?1:0) - (up?1:0);
+    if (ix||iy){
+      const l = Math.hypot(ix,iy); ix/=l; iy/=l;
+      player.vx += ix * 280 * DPR * dt;
+      player.vy += iy * 280 * DPR * dt;
+    }
+
+    // Flow field drift
+    const ang = flowAngle(player.x, player.y, state.t);
+    player.vx += Math.cos(ang) * 70 * DPR * dt;
+    player.vy += Math.sin(ang) * 70 * DPR * dt;
+
+    // Pulse mechanic
+    doPulse(dt);
+
+    // Integrate
+    const friction = 0.965;
+    player.vx *= Math.pow(friction, dt*60);
+    player.vy *= Math.pow(friction, dt*60);
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+
+    // bounds bounce
+    const pad = 22*DPR;
+    if (player.x < pad){ player.x = pad; player.vx *= -0.6; }
+    if (player.x > W-pad){ player.x = W-pad; player.vx *= -0.6; }
+    if (player.y < pad){ player.y = pad; player.vy *= -0.6; }
+    if (player.y > H-pad){ player.y = H-pad; player.vy *= -0.6; }
+
+    // Invuln after reset/death
+    if (player.invuln > 0) player.invuln -= dt;
+
+    // Grow flowers slowly and respawn
+    for (let i=flowers.length-1;i>=0;i--){
+      const f = flowers[i];
+      f.rot += dt * 0.35 * f.wob;
+      // fade old grown flowers
+      if (f.grown) f.life += dt * 0.18;
+      if (f.life > f.max){
+        flowers.splice(i,1);
+        spawnFlower(rand(W*0.07, W*0.93), rand(H*0.1, H*0.92));
+      }
+    }
+
+    // Spawn thorns over time (difficulty)
+    const targetThorns = Math.min(18, 7 + Math.floor(state.score / 400));
+    while (thorns.length < targetThorns) spawnThorn();
+
+    // Update thorns (seek player with flow wobble)
+    for (let i=thorns.length-1;i>=0;i--){
+      const th = thorns[i];
+      const dx = player.x - th.x;
+      const dy = player.y - th.y;
+      const d = Math.hypot(dx,dy) + 0.001;
+
+      // steer with some curl noise
+      const a = flowAngle(th.x + th.phase*10, th.y - th.phase*10, state.t*0.8);
+      const curlx = Math.cos(a), curly = Math.sin(a);
+
+      const seek = (40 + 26*th.aggression) * DPR;
+      th.vx += (dx/d) * seek * dt + curlx * 50 * DPR * dt;
+      th.vy += (dy/d) * seek * dt + curly * 50 * DPR * dt;
+
+      // speed limit
+      const vmax = (190 + 25*th.aggression + Math.min(180, state.score/10)) * DPR;
+      const sp = Math.hypot(th.vx, th.vy);
+      if (sp > vmax){ th.vx = th.vx/sp*vmax; th.vy = th.vy/sp*vmax; }
+
+      // friction
+      th.vx *= Math.pow(0.985, dt*60);
+      th.vy *= Math.pow(0.985, dt*60);
+
+      th.x += th.vx * dt;
+      th.y += th.vy * dt;
+      th.rot += th.spin * dt;
+
+      // remove if too far outside (rare)
+      const margin = 520*DPR;
+      if (th.x < -margin || th.x > W+margin || th.y < -margin || th.y > H+margin){
+        thorns.splice(i,1);
+        continue;
+      }
+
+      // collision
+      if (state.alive && player.invuln <= 0){
+        const hit = d < (player.r + th.r*0.75);
+        if (hit){
+          state.alive = false;
+          state.shake = 0.9;
+          setStatus("The void thorn consumed your light.", 2.2);
+
+          // score finalize
+          const finalScore = Math.floor(state.score);
+          if (finalScore > best){
+            best = finalScore;
+            localStorage.setItem(BEST_KEY, String(best));
+            bestEl.textContent = best;
+          }
+          burst(player.x, player.y, player.hue, 2.2);
+        }
+      }
+    }
+
+    // Particles
+    for (let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.life += dt;
+      const k = p.life / p.max;
+      if (p.life > p.max){ particles.splice(i,1); continue; }
+      p.vx *= Math.pow(0.97, dt*60);
+      p.vy *= Math.pow(0.97, dt*60);
+      // slight flow
+      const a = flowAngle(p.x, p.y, state.t);
+      p.vx += Math.cos(a) * 18 * DPR * dt;
+      p.vy += Math.sin(a) * 18 * DPR * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+
+    // Ribbon trail
+    if (state.alive){
+      addRibbon(player.x, player.y, player.hue);
+    }
+    for (let i=ribbons.length-1;i>=0;i--){
+      ribbons[i].life += dt;
+      if (ribbons[i].life > ribbons[i].max) ribbons.splice(i,1);
+    }
+
+    // Update UI text
+    scoreEl.textContent = String(Math.floor(state.score));
+    comboEl.textContent = "x" + state.combo;
+
+    // pulse charge influences hue (pretty feedback)
+    player.hue = (player.hue + dt*(0.04 + 0.18*player.pulseCharge)) % 1;
+
+    // hide toast after movement/pulse
+    if (mouseDown || ix||iy) toast.style.display = 'none';
+  }
+
+  // ======= Rendering (juice) =======
+  function drawBackground(g){
+    // dynamic nebula gradient
+    const t = state.t;
+    const grad = g.createLinearGradient(0,0,W,H);
+    grad.addColorStop(0, `rgb(7,10,18)`);
+    grad.addColorStop(0.45, `rgb(${12+Math.floor(6*Math.sin(t*0.2))}, ${10}, ${26})`);
+    grad.addColorStop(1, `rgb(6,9,18)`);
+    g.fillStyle = grad;
+    g.fillRect(0,0,W,H);
+
+    // star dust
+    g.save();
+    g.globalAlpha = 0.14;
+    for (let i=0;i< (HQ?140:90);i++){
+      const x = (noise2(i*7.13+t*0.03, i*1.77) * W);
+      const y = (noise2(i*2.31, i*9.19+t*0.02) * H);
+      const r = (0.7 + noise2(i*3.3, t*0.1
