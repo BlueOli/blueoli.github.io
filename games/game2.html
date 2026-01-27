@@ -1,659 +1,853 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Spectral Bloom</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Orbit Weaver</title>
   <style>
     :root { color-scheme: dark; }
-    html, body { height:100%; margin:0; background:#070a12; overflow:hidden; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-    .ui {
-      position: fixed; inset: 0; pointer-events:none;
-      display:flex; flex-direction:column; justify-content:space-between;
-      padding: 14px 14px 16px;
+    html, body { height:100%; margin:0; background:#060810; overflow:hidden; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    #ui {
+      position: fixed; left: 0; top: 0; right: 0; pointer-events: none;
+      display:flex; justify-content:space-between; align-items:flex-start;
+      padding: 14px 14px 0 14px; gap: 12px;
+      color: rgba(255,255,255,.84);
+      text-shadow: 0 2px 10px rgba(0,0,0,.55);
     }
-    .topbar, .bottombar {
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-    }
-    .pill{
+    .pill {
       pointer-events:none;
-      display:inline-flex; align-items:center; gap:10px;
-      padding: 8px 12px; border-radius: 999px;
+      display:inline-flex; gap:10px; align-items:center;
+      padding: 10px 12px; border-radius: 999px;
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.12);
-      backdrop-filter: blur(8px);
-      color: rgba(255,255,255,.82);
-      font-size: 13px;
-      letter-spacing:.2px;
-    }
-    .kbd{
-      padding:2px 8px; border-radius:10px;
-      border: 1px solid rgba(255,255,255,.18);
-      border-bottom-width:2px;
-      background: rgba(255,255,255,.06);
-      font-variant-numeric: tabular-nums;
-      color: rgba(255,255,255,.9);
-    }
-    #c { display:block; width:100vw; height:100vh; }
-    .centerToast{
-      position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
-      padding: 14px 16px; border-radius: 18px;
-      background: rgba(5,8,18,.55);
-      border: 1px solid rgba(255,255,255,.14);
-      color: rgba(255,255,255,.9);
-      text-align:center;
-      box-shadow: 0 20px 60px rgba(0,0,0,.45);
       backdrop-filter: blur(10px);
-      min-width: min(520px, 90vw);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+    .kbd {
+      padding: 2px 8px; border-radius: 10px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.18);
+      border-bottom-width: 2px;
+    }
+    canvas { display:block; }
+    #centerMsg {
+      position: fixed; inset: 0; display:grid; place-items:center;
       pointer-events:none;
     }
-    .title{ font-weight:800; font-size: 22px; letter-spacing:.6px; margin-bottom:6px; }
-    .sub{ opacity:.85; font-size: 14px; line-height:1.35; }
-    .hint{ margin-top:10px; opacity:.9; font-size:13px; }
-    .small{ opacity:.75; font-size:12px; margin-top:6px; }
+    .card {
+      max-width: min(680px, 92vw);
+      padding: 18px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 30px 80px rgba(0,0,0,.45);
+      color: rgba(255,255,255,.88);
+      text-align:center;
+    }
+    .title { font-size: 34px; font-weight: 800; letter-spacing: .4px; margin: 0 0 8px 0; }
+    .sub { opacity:.85; margin:0 0 12px 0; line-height:1.35; }
+    .tiny { opacity:.72; margin:0; font-size: 13px; }
   </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+  <canvas id="c"></canvas>
 
-<div class="ui">
-  <div class="topbar">
+  <div id="ui">
     <div class="pill">
-      <span style="font-weight:700; letter-spacing:.6px;">SPECTRAL BLOOM</span>
-      <span style="opacity:.7;">•</span>
-      <span>Move <span class="kbd">WASD</span>/<span class="kbd">Arrows</span></span>
-      <span>Pulse <span class="kbd">Space</span>/<span class="kbd">Mouse</span></span>
-      <span>Restart <span class="kbd">R</span></span>
-      <span>Quality <span class="kbd">Q</span></span>
+      Orbit Weaver
+      <span style="opacity:.55">•</span>
+      Lasso sparks by closing loops
     </div>
     <div class="pill">
-      <span>Score: <span id="score" style="font-weight:800;">0</span></span>
-      <span style="opacity:.7;">•</span>
-      <span>Best: <span id="best" style="font-weight:800;">0</span></span>
-      <span style="opacity:.7;">•</span>
-      <span>Combo: <span id="combo" style="font-weight:800;">x1</span></span>
+      <span>Score: <b id="score">0</b></span>
+      <span style="opacity:.55">•</span>
+      <span>Best: <b id="best">0</b></span>
+      <span style="opacity:.55">•</span>
+      <span>HP: <b id="hp">3</b></span>
     </div>
   </div>
 
-  <div class="bottombar">
-    <div class="pill">
-      <span>Energy</span>
-      <span style="width:140px; height:10px; border-radius:999px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.12); overflow:hidden;">
-        <span id="energyFill" style="display:block; height:100%; width:100%; background:linear-gradient(90deg, rgba(120,255,220,.9), rgba(120,170,255,.9));"></span>
-      </span>
-      <span id="quality" style="opacity:.85;">HQ</span>
+  <div id="centerMsg">
+    <div class="card" id="startCard">
+      <p class="title">Orbit Weaver</p>
+      <p class="sub">
+        You are a neon comet. Leave a ribbon trail and <b>close loops</b> to capture sparks inside.
+        Avoid voids. Build combos.
+      </p>
+      <p class="sub">
+        Controls:
+        <span class="kbd">Mouse / Touch</span> or <span class="kbd">WASD</span>
+        • Boost <span class="kbd">Shift</span>
+        • Restart <span class="kbd">R</span>
+      </p>
+      <p class="tiny">Click / tap to begin.</p>
     </div>
-    <div class="pill" id="status">Bloom to score. Avoid thorns.</div>
   </div>
-</div>
 
-<div class="centerToast" id="toast">
-  <div class="title">SPECTRAL BLOOM</div>
-  <div class="sub">
-    You are a light seed in a neon garden.<br/>
-    Pulse to bloom flowers (score) — recoil moves you. Chain blooms quickly for combo.
-  </div>
-  <div class="hint">
-    <span class="kbd">Space</span> / Click = Pulse • <span class="kbd">WASD</span> = Drift • <span class="kbd">R</span> = Restart
-  </div>
-  <div class="small">Tip: Pulse near flowers for huge chains — but thorns love predictable paths.</div>
-</div>
+  <script>
+  (() => {
+    // ---------- Canvas setup ----------
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d", { alpha: false });
 
-<script>
-(() => {
-  // ======= Canvas & scaling =======
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d', { alpha: false });
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const hpEl = document.getElementById("hp");
+    const startCard = document.getElementById("startCard");
+    const centerMsg = document.getElementById("centerMsg");
 
-  let DPR = Math.min(2, devicePixelRatio || 1);
-  let W=0,H=0;
+    const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    let W = 0, H = 0;
 
-  // Offscreen for bloom/post
-  const off = document.createElement('canvas');
-  const octx = off.getContext('2d', { alpha: true });
-
-  // small buffer for blur/bloom
-  const blurA = document.createElement('canvas');
-  const blurB = document.createElement('canvas');
-  const bctxA = blurA.getContext('2d', { alpha: true });
-  const bctxB = blurB.getContext('2d', { alpha: true });
-
-  let HQ = true;
-
-  function resize(){
-    W = Math.floor(innerWidth * DPR);
-    H = Math.floor(innerHeight * DPR);
-    canvas.width = W; canvas.height = H;
-
-    off.width = W; off.height = H;
-
-    // bloom buffers smaller for performance
-    const s = HQ ? 0.5 : 0.33;
-    blurA.width = Math.floor(W*s); blurA.height = Math.floor(H*s);
-    blurB.width = blurA.width; blurB.height = blurA.height;
-
-    ctx.imageSmoothingEnabled = true;
-    octx.imageSmoothingEnabled = true;
-    bctxA.imageSmoothingEnabled = true;
-    bctxB.imageSmoothingEnabled = true;
-  }
-  addEventListener('resize', () => { DPR = Math.min(2, devicePixelRatio || 1); resize(); });
-  resize();
-
-  // ======= UI =======
-  const scoreEl = document.getElementById('score');
-  const bestEl = document.getElementById('best');
-  const comboEl = document.getElementById('combo');
-  const energyFill = document.getElementById('energyFill');
-  const toast = document.getElementById('toast');
-  const status = document.getElementById('status');
-  const qualityEl = document.getElementById('quality');
-
-  const BEST_KEY = "spectral_bloom_best_v1";
-  let best = Number(localStorage.getItem(BEST_KEY) || 0);
-  bestEl.textContent = best;
-
-  // ======= Helpers =======
-  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-  const lerp = (a,b,t)=>a+(b-a)*t;
-  const rand = (a,b)=>a+Math.random()*(b-a);
-  const randi = (a,b)=>Math.floor(rand(a,b+1));
-  const hypot = Math.hypot;
-
-  function easeOut(t){ return 1 - Math.pow(1-t, 3); }
-  function easeInOut(t){ return t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
-
-  // nice spectral gradient based on "hue" value
-  function spectralColor(h, a=1){
-    // h in [0,1]
-    const x = (h*6)%6;
-    const c = 1;
-    const m = 0;
-    let r=0,g=0,b=0;
-    if (x<1){ r=c; g=x; b=0; }
-    else if (x<2){ r=2-x; g=c; b=0; }
-    else if (x<3){ r=0; g=c; b=x-2; }
-    else if (x<4){ r=0; g=4-x; b=c; }
-    else if (x<5){ r=x-4; g=0; b=c; }
-    else { r=c; g=0; b=6-x; }
-    r = Math.floor((r+m)*255);
-    g = Math.floor((g+m)*255);
-    b = Math.floor((b+m)*255);
-    return `rgba(${r},${g},${b},${a})`;
-  }
-
-  // 2D value noise (fast-ish) for flow field
-  const NOISE_SIZE = 256;
-  const noise = new Float32Array(NOISE_SIZE*NOISE_SIZE);
-  for (let i=0;i<noise.length;i++) noise[i] = Math.random();
-
-  function smoothstep(t){ return t*t*(3-2*t); }
-  function noise2(x,y){
-    // x,y in float coordinates
-    const xi = Math.floor(x) & (NOISE_SIZE-1);
-    const yi = Math.floor(y) & (NOISE_SIZE-1);
-    const xf = x - Math.floor(x);
-    const yf = y - Math.floor(y);
-
-    const a = noise[yi*NOISE_SIZE + xi];
-    const b = noise[yi*NOISE_SIZE + ((xi+1)&(NOISE_SIZE-1))];
-    const c = noise[((yi+1)&(NOISE_SIZE-1))*NOISE_SIZE + xi];
-    const d = noise[((yi+1)&(NOISE_SIZE-1))*NOISE_SIZE + ((xi+1)&(NOISE_SIZE-1))];
-
-    const u = smoothstep(xf);
-    const v = smoothstep(yf);
-
-    return lerp(lerp(a,b,u), lerp(c,d,u), v);
-  }
-
-  function flowAngle(x,y,time){
-    // world coords -> stable flow; time adds slow drift
-    const s = 0.0025;
-    const n = noise2(x*s + time*0.02, y*s - time*0.015);
-    return n * Math.PI * 2.0;
-  }
-
-  // ======= Input =======
-  const keys = new Set();
-  let mouseDown = false;
-  let mouseX = 0, mouseY = 0;
-
-  addEventListener('keydown', (e)=>{
-    const k = e.key.toLowerCase();
-    keys.add(k);
-    if (k === 'r') reset();
-    if (k === 'q') toggleQuality();
-    if (k === ' ') { mouseDown = true; e.preventDefault(); }
-  }, { passive:false });
-
-  addEventListener('keyup', (e)=>{
-    const k = e.key.toLowerCase();
-    keys.delete(k);
-    if (k === ' ') mouseDown = false;
-  });
-
-  addEventListener('pointerdown', (e)=>{
-    mouseDown = true;
-    toast.style.display = 'none';
-  });
-  addEventListener('pointerup', ()=> mouseDown = false);
-  addEventListener('pointermove', (e)=>{
-    const rect = canvas.getBoundingClientRect();
-    mouseX = (e.clientX - rect.left) * DPR;
-    mouseY = (e.clientY - rect.top) * DPR;
-  });
-
-  // ======= Game State =======
-  const state = {
-    t: 0,
-    score: 0,
-    combo: 1,
-    comboTimer: 0,
-    alive: true,
-    shake: 0,
-    vignette: 0.45,
-    messageTimer: 0,
-    msg: "Bloom to score. Avoid thorns.",
-    quality: "HQ"
-  };
-
-  const player = {
-    x: W*0.5, y: H*0.55,
-    vx: 0, vy: 0,
-    r: 10*DPR,
-    energy: 1.0,
-    pulseCharge: 0,
-    hue: Math.random(),
-    invuln: 0
-  };
-
-  const flowers = [];
-  const thorns = [];
-  const particles = [];
-  const ribbons = []; // trail segments
-
-  function setStatus(text, seconds=2){
-    state.msg = text;
-    state.messageTimer = seconds;
-    status.textContent = text;
-  }
-
-  function toggleQuality(){
-    HQ = !HQ;
-    qualityEl.textContent = HQ ? "HQ" : "LQ";
-    setStatus(HQ ? "High Quality enabled" : "Low Quality enabled", 1.5);
+    function resize() {
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    window.addEventListener("resize", resize, { passive: true });
     resize();
-  }
 
-  // ======= Entities =======
-  function spawnFlower(x,y){
-    flowers.push({
-      x, y,
-      r: rand(18, 34) * DPR,
-      hue: Math.random(),
-      life: 0,
-      max: rand(5.5, 8.5),
-      petals: randi(7, 12),
-      rot: rand(0, Math.PI*2),
-      wob: rand(0.6, 1.4),
-      grown: false
+    // Offscreen for bloom
+    const scene = document.createElement("canvas");
+    const sctx = scene.getContext("2d", { alpha: true });
+    const bloom = document.createElement("canvas");
+    const bctx = bloom.getContext("2d", { alpha: true });
+
+    function resizeOffscreen() {
+      scene.width = Math.floor(W * DPR);
+      scene.height = Math.floor(H * DPR);
+      bloom.width = Math.floor(W * DPR);
+      bloom.height = Math.floor(H * DPR);
+      sctx.setTransform(DPR,0,0,DPR,0,0);
+      bctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    resizeOffscreen();
+    window.addEventListener("resize", resizeOffscreen, { passive: true });
+
+    // ---------- Utilities ----------
+    const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+    const rand = (a,b)=>a + Math.random()*(b-a);
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
+    function hash(n){ // tiny deterministic hash for starfield
+      n = (n<<13) ^ n;
+      return (1.0 - ((n*(n*n*15731 + 789221)+1376312589) & 0x7fffffff) / 1073741824.0);
+    }
+
+    // Point-in-polygon (ray casting)
+    function pointInPoly(px, py, poly){
+      let inside = false;
+      for (let i=0, j=poly.length-1; i<poly.length; j=i++){
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi>py)!=(yj>py)) && (px < (xj-xi)*(py-yi)/((yj-yi)||1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // ---------- Input ----------
+    let pointer = { x: W*0.5, y: H*0.5, down:false, has:false };
+    window.addEventListener("pointerdown", e => { pointer.down=true; pointer.has=true; pointer.x=e.clientX; pointer.y=e.clientY; startGame(); }, { passive:true });
+    window.addEventListener("pointermove", e => { pointer.has=true; pointer.x=e.clientX; pointer.y=e.clientY; }, { passive:true });
+    window.addEventListener("pointerup", () => { pointer.down=false; }, { passive:true });
+
+    const keys = new Set();
+    window.addEventListener("keydown", e => {
+      keys.add(e.key.toLowerCase());
+      if (e.key.toLowerCase() === "r") reset();
     });
-  }
+    window.addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
 
-  function spawnThorn(){
-    // Spawn outside camera edges
-    const margin = 160*DPR;
-    const side = randi(0,3);
-    let x,y;
-    if (side===0){ x = -margin; y = rand(0,H); }
-    if (side===1){ x = W+margin; y = rand(0,H); }
-    if (side===2){ x = rand(0,W); y = -margin; }
-    if (side===3){ x = rand(0,W); y = H+margin; }
+    // ---------- Game state ----------
+    const BEST_KEY = "orbit_weaver_best_v1";
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+    bestEl.textContent = best;
 
-    thorns.push({
-      x, y,
+    let started = false;
+
+    const player = {
+      x: W*0.5, y: H*0.55,
       vx: 0, vy: 0,
-      r: rand(16, 28) * DPR,
-      rot: rand(0, Math.PI*2),
-      spin: rand(-2.5, 2.5),
-      hue: 0.02 + Math.random()*0.06, // reddish
-      aggression: rand(0.7, 1.2),
-      phase: rand(0, 10)
-    });
-  }
+      r: 9,
+      speed: 430,
+      boost: 1.0,
+      hue: 195,
+      dmgTimer: 0
+    };
 
-  function burst(x,y, hue, power=1){
-    const count = Math.floor(22 * power * (HQ?1:0.7));
-    for (let i=0;i<count;i++){
-      const a = rand(0, Math.PI*2);
-      const sp = rand(90, 420) * DPR * power;
-      particles.push({
-        x, y,
-        vx: Math.cos(a)*sp,
-        vy: Math.sin(a)*sp,
-        life: 0,
-        max: rand(0.55, 1.2),
-        size: rand(1.2, 3.2) * DPR,
-        hue: (hue + rand(-0.08, 0.08) + 1) % 1,
-        type: (Math.random()<0.18 ? "spark" : "dot")
+    const trail = {
+      pts: [],
+      maxPts: 180,
+      minStep: 4.5,
+      age: 0
+    };
+
+    let sparks = [];
+    let voids = [];
+    let drones = [];
+    let particles = [];
+
+    let score = 0;
+    let hp = 3;
+    let combo = 0;
+    let comboTimer = 0;
+
+    function reset() {
+      started = false;
+      centerMsg.style.display = "grid";
+      startCard.style.display = "block";
+
+      score = 0; hp = 3; combo = 0; comboTimer = 0;
+      scoreEl.textContent = "0";
+      hpEl.textContent = String(hp);
+
+      player.x = W*0.5; player.y = H*0.55;
+      player.vx = 0; player.vy = 0;
+      player.dmgTimer = 0;
+
+      trail.pts.length = 0;
+      particles.length = 0;
+      sparks = [];
+      voids = [];
+      drones = [];
+
+      // Spawn initial entities
+      for (let i=0;i<14;i++) spawnSpark();
+      for (let i=0;i<3;i++) spawnVoid();
+      for (let i=0;i<5;i++) spawnDrone();
+    }
+
+    function startGame(){
+      if (started) return;
+      started = true;
+      centerMsg.style.display = "none";
+    }
+
+    function spawnSpark() {
+      const m = 80;
+      sparks.push({
+        x: rand(m, W-m),
+        y: rand(m, H-m),
+        r: rand(6, 10),
+        hue: rand(40, 330),
+        t: rand(0, 10),
+        alive: true
       });
     }
-  }
 
-  function addRibbon(x,y, hue){
-    ribbons.push({ x,y, hue, life: 0, max: 0.8, w: rand(8, 16)*DPR });
-    if (ribbons.length > (HQ?220:120)) ribbons.shift();
-  }
-
-  function reset(){
-    state.t = 0;
-    state.score = 0;
-    state.combo = 1;
-    state.comboTimer = 0;
-    state.alive = true;
-    state.shake = 0;
-    player.x = W*0.5; player.y = H*0.55;
-    player.vx = 0; player.vy = 0;
-    player.energy = 1;
-    player.pulseCharge = 0;
-    player.hue = Math.random();
-    player.invuln = 1.0;
-
-    flowers.length = 0;
-    thorns.length = 0;
-    particles.length = 0;
-    ribbons.length = 0;
-
-    // seed the garden
-    for (let i=0;i<22;i++){
-      spawnFlower(rand(W*0.08, W*0.92), rand(H*0.1, H*0.9));
+    function spawnVoid() {
+      const m = 140;
+      voids.push({
+        x: rand(m, W-m),
+        y: rand(m, H-m),
+        r: rand(32, 54),
+        pull: rand(120, 190),
+        t: rand(0, 10)
+      });
     }
-    for (let i=0;i<7;i++) spawnThorn();
 
-    scoreEl.textContent = "0";
-    comboEl.textContent = "x1";
-    toast.style.display = "";
-    setStatus("Bloom to score. Avoid thorns.", 2.5);
-  }
+    function spawnDrone() {
+      drones.push({
+        x: rand(60, W-60),
+        y: rand(60, H-60),
+        r: rand(10, 16),
+        vx: rand(-140,140),
+        vy: rand(-140,140),
+        hue: rand(0, 360),
+        t: rand(0, 10)
+      });
+    }
 
-  reset();
-
-  // ======= Game Logic =======
-  function doPulse(dt){
-    // Charge while holding (costs energy); release creates pulse
-    if (mouseDown && state.alive){
-      toast.style.display = 'none';
-      // build charge
-      const chargeRate = 1.1;
-      const energyCost = 0.32 * dt;
-      if (player.energy > 0.02){
-        player.pulseCharge = clamp(player.pulseCharge + chargeRate * dt, 0, 1.15);
-        player.energy = clamp(player.energy - energyCost, 0, 1);
-      } else {
-        player.pulseCharge = clamp(player.pulseCharge - 1.8*dt, 0, 1.2);
+    function burst(x,y,hue,amount=26,spd=260,life=0.9){
+      for(let i=0;i<amount;i++){
+        const a = rand(0, Math.PI*2);
+        const v = rand(spd*0.35, spd);
+        particles.push({
+          x,y, vx: Math.cos(a)*v, vy: Math.sin(a)*v,
+          r: rand(1.2, 3.6),
+          life, max: life,
+          hue: hue + rand(-18,18)
+        });
       }
-    } else {
-      if (player.pulseCharge > 0.08 && state.alive){
-        // release pulse
-        const p = player.pulseCharge;
-        player.pulseCharge = 0;
+    }
 
-        const px = player.x, py = player.y;
-        const dx = (mouseX || px) - px;
-        const dy = (mouseY || py) - py;
-        const len = Math.max(1, Math.hypot(dx,dy));
-        const nx = dx/len, ny = dy/len;
+    function ribbonSparkle(x,y,hue){
+      particles.push({
+        x,y, vx: rand(-30,30), vy: rand(-30,30),
+        r: rand(0.9, 2.2),
+        life: rand(0.25, 0.5), max: 0.5,
+        hue: hue + rand(-8,8)
+      });
+    }
 
-        // recoil opposite direction (movement-by-pulse)
-        const recoil = (260 + 520*p) * DPR;
-        player.vx += -nx * recoil;
-        player.vy += -ny * recoil;
+    // ---------- Loop capture logic ----------
+    function tryCloseLoop() {
+      const pts = trail.pts;
+      if (pts.length < 26) return;
 
-        // shock visuals
-        state.shake = Math.max(state.shake, 0.22 + 0.22*p);
-        burst(px, py, player.hue, 0.9 + 0.9*p);
+      // If current position is close to some earlier point, consider a loop
+      const head = pts[pts.length - 1];
+      const closeDist = 18*18;
+      let hitIndex = -1;
 
-        // affect flowers & thorns
-        const radius = (90 + 140*p) * DPR;
-        let bloomed = 0;
+      // Search in older points (skip the last few points so we don't close instantly)
+      for (let i = 0; i < pts.length - 12; i++) {
+        if (dist2(head.x, head.y, pts[i].x, pts[i].y) < closeDist) {
+          hitIndex = i;
+          break;
+        }
+      }
+      if (hitIndex < 0) return;
 
-        for (const f of flowers){
-          const d = Math.hypot(f.x - px, f.y - py);
-          if (d < radius){
-            // bloom if young enough
-            if (!f.grown){
-              f.life += (0.9 + 1.1*p) * (1 - d/radius);
-              if (f.life > 1.2){
-                f.grown = true;
-                bloomed++;
-                // scoring & combo
-                const now = state.t;
-                if (state.comboTimer > 0) state.combo = Math.min(12, state.combo + 1);
-                else state.combo = 1;
-                state.comboTimer = 1.25;
+      // Build polygon from hitIndex..end
+      const poly = pts.slice(hitIndex);
+      if (poly.length < 18) return;
 
-                const gain = Math.floor(18 * state.combo * (0.7 + 0.6*p));
-                state.score += gain;
+      // Count sparks inside
+      let captured = 0;
+      for (const s of sparks) {
+        if (!s.alive) continue;
+        if (pointInPoly(s.x, s.y, poly)) {
+          s.alive = false;
+          captured++;
+          burst(s.x, s.y, s.hue, 20, 260, 0.7);
+        }
+      }
 
-                burst(f.x, f.y, f.hue, 1.0 + 0.6*p);
-              }
+      if (captured > 0) {
+        // Combo scoring
+        comboTimer = 2.2;
+        combo++;
+        const base = captured * 100;
+        const bonus = Math.floor(base * (0.25 * clamp(combo-1,0,8)));
+        score += base + bonus;
+
+        scoreEl.textContent = String(score);
+
+        // Big celebratory burst at loop center
+        let cx=0, cy=0;
+        for (const p of poly){ cx+=p.x; cy+=p.y; }
+        cx/=poly.length; cy/=poly.length;
+        burst(cx, cy, player.hue, 140, 520, 1.15);
+
+        // Clear trail to encourage re-weaving
+        trail.pts.length = 0;
+      } else {
+        // If loop closes with nothing inside, just soften the trail (still looks cool)
+        burst(head.x, head.y, player.hue, 24, 220, 0.5);
+        trail.pts.splice(0, Math.floor(trail.pts.length * 0.35));
+      }
+
+      // Respawn dead sparks
+      const aliveCount = sparks.filter(s => s.alive).length;
+      while (aliveCount + sparks.filter(s => s.alive).length < 14) break; // (kept safe)
+      for (let i=0;i<captured;i++) spawnSpark();
+    }
+
+    // ---------- Update ----------
+    let last = performance.now();
+
+    function update(dt){
+      if (!started) return;
+
+      // Inputs: mouse/touch "magnet" + keyboard
+      const boost = (keys.has("shift")) ? 1.35 : 1.0;
+      player.boost = boost;
+
+      let ax = 0, ay = 0;
+      const up = keys.has("w") || keys.has("arrowup");
+      const down = keys.has("s") || keys.has("arrowdown");
+      const left = keys.has("a") || keys.has("arrowleft");
+      const right = keys.has("d") || keys.has("arrowright");
+      if (up) ay -= 1;
+      if (down) ay += 1;
+      if (left) ax -= 1;
+      if (right) ax += 1;
+      if (ax || ay){
+        const l = Math.hypot(ax,ay) || 1;
+        ax/=l; ay/=l;
+      }
+
+      // Pointer pull (gentle) for satisfying motion
+      if (pointer.has){
+        const dx = pointer.x - player.x;
+        const dy = pointer.y - player.y;
+        const d = Math.hypot(dx,dy) || 1;
+        const pull = clamp(d/180, 0, 1);
+        ax += (dx/d) * 0.9 * pull;
+        ay += (dy/d) * 0.9 * pull;
+      }
+
+      // Smooth acceleration
+      const targetVx = ax * player.speed * player.boost;
+      const targetVy = ay * player.speed * player.boost;
+      player.vx = lerp(player.vx, targetVx, 1 - Math.pow(0.0004, dt));
+      player.vy = lerp(player.vy, targetVy, 1 - Math.pow(0.0004, dt));
+
+      // Void pull + danger
+      for (const v of voids){
+        const dx = v.x - player.x, dy = v.y - player.y;
+        const d = Math.hypot(dx,dy) || 1;
+        const pull = v.pull / (d*d*0.006 + 1);
+        player.vx += (dx/d) * pull * dt;
+        player.vy += (dy/d) * pull * dt;
+
+        // Damage if inside the core
+        if (d < v.r + player.r && player.dmgTimer <= 0){
+          hp--;
+          hpEl.textContent = String(hp);
+          player.dmgTimer = 1.0;
+          burst(player.x, player.y, 0, 110, 520, 1.0);
+          combo = 0; comboTimer = 0;
+
+          if (hp <= 0){
+            // End
+            started = false;
+            centerMsg.style.display = "grid";
+            startCard.style.display = "block";
+            startCard.querySelector(".title").textContent = "Lost in the Void";
+            startCard.querySelector(".sub").innerHTML =
+              `Final score: <b>${score}</b> • Best: <b>${best}</b><br>Click / tap to try again.`;
+            if (score > best){
+              best = score;
+              localStorage.setItem(BEST_KEY, String(best));
+              bestEl.textContent = String(best);
             }
-            // push petals particles
-            const push = (120 + 280*p) * (1 - d/radius) * DPR;
-            const ax = (f.x - px) / (d+0.001);
-            const ay = (f.y - py) / (d+0.001);
-            particles.push({
-              x: f.x + ax*f.r*0.4, y: f.y + ay*f.r*0.4,
-              vx: ax*push + rand(-30,30)*DPR,
-              vy: ay*push + rand(-30,30)*DPR,
-              life: 0, max: rand(0.5, 1.2),
-              size: rand(1.2, 3.0)*DPR,
-              hue: f.hue, type:"petal"
-            });
           }
         }
+      }
 
-        for (const th of thorns){
-          const d = Math.hypot(th.x - px, th.y - py);
-          if (d < radius){
-            const ax = (th.x - px)/(d+0.001);
-            const ay = (th.y - py)/(d+0.001);
-            const push = (180 + 520*p) * (1 - d/radius) * DPR;
-            th.vx += ax*push;
-            th.vy += ay*push;
-          }
-        }
+      // Integrate
+      player.x += player.vx * dt;
+      player.y += player.vy * dt;
 
-        if (bloomed>0) setStatus(`Bloom chain! +${bloomed} (combo ${state.combo})`, 1.1);
+      // Soft bounds (wrap-ish)
+      const pad = 10;
+      if (player.x < -pad) player.x = W + pad;
+      if (player.x > W + pad) player.x = -pad;
+      if (player.y < -pad) player.y = H + pad;
+      if (player.y > H + pad) player.y = -pad;
+
+      // Trail
+      const pts = trail.pts;
+      trail.age += dt;
+
+      // Add points with spacing
+      if (pts.length === 0){
+        pts.push({x:player.x, y:player.y});
       } else {
-        player.pulseCharge = 0;
-      }
-    }
-  }
-
-  function update(dt){
-    state.t += dt;
-
-    // UI timers
-    if (state.messageTimer > 0){
-      state.messageTimer -= dt;
-      if (state.messageTimer <= 0) status.textContent = "Bloom to score. Avoid thorns.";
-    }
-
-    // Combo decay
-    if (state.comboTimer > 0){
-      state.comboTimer -= dt;
-      if (state.comboTimer <= 0) {
-        state.combo = 1;
-      }
-    }
-
-    // regen energy
-    const regen = 0.22 * dt * (mouseDown ? 0.25 : 1);
-    player.energy = clamp(player.energy + regen, 0, 1);
-    energyFill.style.width = `${Math.floor(player.energy*100)}%`;
-
-    // Movement input (gentle drift)
-    const up = keys.has('w') || keys.has('arrowup');
-    const down = keys.has('s') || keys.has('arrowdown');
-    const left = keys.has('a') || keys.has('arrowleft');
-    const right = keys.has('d') || keys.has('arrowright');
-    let ix = (right?1:0) - (left?1:0);
-    let iy = (down?1:0) - (up?1:0);
-    if (ix||iy){
-      const l = Math.hypot(ix,iy); ix/=l; iy/=l;
-      player.vx += ix * 280 * DPR * dt;
-      player.vy += iy * 280 * DPR * dt;
-    }
-
-    // Flow field drift
-    const ang = flowAngle(player.x, player.y, state.t);
-    player.vx += Math.cos(ang) * 70 * DPR * dt;
-    player.vy += Math.sin(ang) * 70 * DPR * dt;
-
-    // Pulse mechanic
-    doPulse(dt);
-
-    // Integrate
-    const friction = 0.965;
-    player.vx *= Math.pow(friction, dt*60);
-    player.vy *= Math.pow(friction, dt*60);
-    player.x += player.vx * dt;
-    player.y += player.vy * dt;
-
-    // bounds bounce
-    const pad = 22*DPR;
-    if (player.x < pad){ player.x = pad; player.vx *= -0.6; }
-    if (player.x > W-pad){ player.x = W-pad; player.vx *= -0.6; }
-    if (player.y < pad){ player.y = pad; player.vy *= -0.6; }
-    if (player.y > H-pad){ player.y = H-pad; player.vy *= -0.6; }
-
-    // Invuln after reset/death
-    if (player.invuln > 0) player.invuln -= dt;
-
-    // Grow flowers slowly and respawn
-    for (let i=flowers.length-1;i>=0;i--){
-      const f = flowers[i];
-      f.rot += dt * 0.35 * f.wob;
-      // fade old grown flowers
-      if (f.grown) f.life += dt * 0.18;
-      if (f.life > f.max){
-        flowers.splice(i,1);
-        spawnFlower(rand(W*0.07, W*0.93), rand(H*0.1, H*0.92));
-      }
-    }
-
-    // Spawn thorns over time (difficulty)
-    const targetThorns = Math.min(18, 7 + Math.floor(state.score / 400));
-    while (thorns.length < targetThorns) spawnThorn();
-
-    // Update thorns (seek player with flow wobble)
-    for (let i=thorns.length-1;i>=0;i--){
-      const th = thorns[i];
-      const dx = player.x - th.x;
-      const dy = player.y - th.y;
-      const d = Math.hypot(dx,dy) + 0.001;
-
-      // steer with some curl noise
-      const a = flowAngle(th.x + th.phase*10, th.y - th.phase*10, state.t*0.8);
-      const curlx = Math.cos(a), curly = Math.sin(a);
-
-      const seek = (40 + 26*th.aggression) * DPR;
-      th.vx += (dx/d) * seek * dt + curlx * 50 * DPR * dt;
-      th.vy += (dy/d) * seek * dt + curly * 50 * DPR * dt;
-
-      // speed limit
-      const vmax = (190 + 25*th.aggression + Math.min(180, state.score/10)) * DPR;
-      const sp = Math.hypot(th.vx, th.vy);
-      if (sp > vmax){ th.vx = th.vx/sp*vmax; th.vy = th.vy/sp*vmax; }
-
-      // friction
-      th.vx *= Math.pow(0.985, dt*60);
-      th.vy *= Math.pow(0.985, dt*60);
-
-      th.x += th.vx * dt;
-      th.y += th.vy * dt;
-      th.rot += th.spin * dt;
-
-      // remove if too far outside (rare)
-      const margin = 520*DPR;
-      if (th.x < -margin || th.x > W+margin || th.y < -margin || th.y > H+margin){
-        thorns.splice(i,1);
-        continue;
-      }
-
-      // collision
-      if (state.alive && player.invuln <= 0){
-        const hit = d < (player.r + th.r*0.75);
-        if (hit){
-          state.alive = false;
-          state.shake = 0.9;
-          setStatus("The void thorn consumed your light.", 2.2);
-
-          // score finalize
-          const finalScore = Math.floor(state.score);
-          if (finalScore > best){
-            best = finalScore;
-            localStorage.setItem(BEST_KEY, String(best));
-            bestEl.textContent = best;
+        const lastP = pts[pts.length - 1];
+        const d = Math.hypot(player.x - lastP.x, player.y - lastP.y);
+        if (d >= trail.minStep){
+          // Insert multiple points if fast
+          const steps = Math.min(6, Math.floor(d / trail.minStep));
+          for (let i=1;i<=steps;i++){
+            const t = i/(steps+1);
+            pts.push({ x: lerp(lastP.x, player.x, t), y: lerp(lastP.y, player.y, t) });
           }
-          burst(player.x, player.y, player.hue, 2.2);
+          pts.push({x:player.x, y:player.y});
         }
       }
+      while (pts.length > trail.maxPts) pts.shift();
+
+      // Pretty sparkles along ribbon
+      if (pts.length > 1){
+        const p = pts[pts.length-1];
+        ribbonSparkle(p.x + rand(-2,2), p.y + rand(-2,2), player.hue);
+      }
+
+      // Close-loop check
+      tryCloseLoop();
+
+      // Combo decay
+      if (comboTimer > 0) comboTimer -= dt;
+      else combo = 0;
+
+      // Sparks animate + attract slightly to motion (feel alive)
+      for (const s of sparks){
+        s.t += dt;
+        if (!s.alive) continue;
+
+        const wob = 10;
+        s.x += Math.cos(s.t*1.3 + s.hue) * dt * wob;
+        s.y += Math.sin(s.t*1.1 + s.hue) * dt * wob;
+
+        // Respawn if out of bounds
+        s.x = (s.x + W) % W;
+        s.y = (s.y + H) % H;
+
+        // If player touches spark directly -> small score
+        if (dist2(player.x, player.y, s.x, s.y) < (player.r + s.r + 7) ** 2){
+          s.alive = false;
+          score += 35;
+          scoreEl.textContent = String(score);
+          burst(s.x, s.y, s.hue, 20, 300, 0.6);
+          spawnSpark();
+        }
+      }
+
+      // Drones
+      for (const d of drones){
+        d.t += dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+
+        // Bounce edges
+        if (d.x < d.r || d.x > W - d.r) d.vx *= -1;
+        if (d.y < d.r || d.y > H - d.r) d.vy *= -1;
+
+        // Minor steering
+        d.vx += Math.cos(d.t*0.9)*dt*18;
+        d.vy += Math.sin(d.t*1.1)*dt*18;
+
+        // Hit player
+        if (player.dmgTimer <= 0 && dist2(player.x, player.y, d.x, d.y) < (player.r + d.r + 3) ** 2){
+          hp--;
+          hpEl.textContent = String(hp);
+          player.dmgTimer = 0.9;
+          burst(player.x, player.y, d.hue, 90, 520, 0.95);
+          combo = 0; comboTimer = 0;
+
+          if (hp <= 0){
+            started = false;
+            centerMsg.style.display = "grid";
+            startCard.style.display = "block";
+            startCard.querySelector(".title").textContent = "Signal Lost";
+            startCard.querySelector(".sub").innerHTML =
+              `Final score: <b>${score}</b> • Best: <b>${best}</b><br>Click / tap to try again.`;
+            if (score > best){
+              best = score;
+              localStorage.setItem(BEST_KEY, String(best));
+              bestEl.textContent = String(best);
+            }
+          }
+        }
+      }
+
+      // Particles
+      for (let i = particles.length - 1; i >= 0; i--){
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) { particles.splice(i,1); continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(0.18, dt); // strong damping
+        p.vy *= Math.pow(0.18, dt);
+      }
+
+      // Damage timer
+      if (player.dmgTimer > 0) player.dmgTimer -= dt;
+
+      // Slowly shift player hue for dynamic look
+      player.hue = (player.hue + dt * 18) % 360;
     }
 
-    // Particles
-    for (let i=particles.length-1;i>=0;i--){
-      const p = particles[i];
-      p.life += dt;
-      const k = p.life / p.max;
-      if (p.life > p.max){ particles.splice(i,1); continue; }
-      p.vx *= Math.pow(0.97, dt*60);
-      p.vy *= Math.pow(0.97, dt*60);
-      // slight flow
-      const a = flowAngle(p.x, p.y, state.t);
-      p.vx += Math.cos(a) * 18 * DPR * dt;
-      p.vy += Math.sin(a) * 18 * DPR * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
+    // ---------- Render ----------
+    function drawStarfield(g){
+      // Deep gradient space
+      const grd = g.createLinearGradient(0,0,0,H);
+      grd.addColorStop(0, "#060813");
+      grd.addColorStop(0.55, "#071027");
+      grd.addColorStop(1, "#04040a");
+      g.fillStyle = grd;
+      g.fillRect(0,0,W,H);
+
+      // Procedural stars
+      g.save();
+      g.globalAlpha = 0.55;
+      for (let i=0;i<420;i++){
+        const hx = hash(i*17.1)*0.5+0.5;
+        const hy = hash(i*31.7)*0.5+0.5;
+        const x = hx * W;
+        const y = hy * H;
+        const r = 0.6 + (hash(i*91.3)*0.5+0.5)*1.6;
+
+        g.fillStyle = "rgba(255,255,255," + (0.12 + r*0.08) + ")";
+        g.beginPath();
+        g.arc(x,y,r,0,Math.PI*2);
+        g.fill();
+
+        // occasional colored star
+        if (i % 18 === 0){
+          g.fillStyle = `hsla(${(i*9)%360}, 90%, 70%, 0.12)`;
+          g.beginPath();
+          g.arc(x,y,r*2.2,0,Math.PI*2);
+          g.fill();
+        }
+      }
+      g.restore();
     }
 
-    // Ribbon trail
-    if (state.alive){
-      addRibbon(player.x, player.y, player.hue);
+    function drawVoids(g){
+      for (const v of voids){
+        v.t += 0.016;
+
+        // Outer glow
+        g.save();
+        g.globalCompositeOperation = "lighter";
+        const ring = g.createRadialGradient(v.x,v.y, 0, v.x,v.y, v.r*3.2);
+        ring.addColorStop(0, "rgba(0,0,0,0)");
+        ring.addColorStop(0.2, "rgba(130,60,255,0.05)");
+        ring.addColorStop(0.5, "rgba(40,10,80,0.18)");
+        ring.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = ring;
+        g.beginPath();
+        g.arc(v.x,v.y,v.r*3.2,0,Math.PI*2);
+        g.fill();
+        g.restore();
+
+        // Core
+        g.save();
+        const core = g.createRadialGradient(v.x,v.y, 0, v.x,v.y, v.r);
+        core.addColorStop(0, "rgba(0,0,0,1)");
+        core.addColorStop(0.45, "rgba(0,0,0,1)");
+        core.addColorStop(0.7, "rgba(30,12,70,0.8)");
+        core.addColorStop(1, "rgba(150,90,255,0.08)");
+        g.fillStyle = core;
+        g.beginPath();
+        g.arc(v.x,v.y,v.r,0,Math.PI*2);
+        g.fill();
+
+        // Subtle swirl lines
+        g.globalAlpha = 0.22;
+        g.strokeStyle = "rgba(180,120,255,0.35)";
+        g.lineWidth = 1;
+        for (let k=0;k<9;k++){
+          const a0 = v.t*0.7 + k*(Math.PI*2/9);
+          g.beginPath();
+          for (let t=0;t<=1;t+=0.08){
+            const rr = lerp(v.r*0.2, v.r*1.0, t);
+            const aa = a0 + t*2.8;
+            const x = v.x + Math.cos(aa)*rr;
+            const y = v.y + Math.sin(aa)*rr;
+            if (t === 0) g.moveTo(x,y); else g.lineTo(x,y);
+          }
+          g.stroke();
+        }
+        g.restore();
+      }
     }
-    for (let i=ribbons.length-1;i>=0;i--){
-      ribbons[i].life += dt;
-      if (ribbons[i].life > ribbons[i].max) ribbons.splice(i,1);
+
+    function drawSparks(g){
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      for (const s of sparks){
+        if (!s.alive) continue;
+        const pulse = 0.6 + Math.sin(s.t*3.2)*0.15;
+        const rr = s.r * pulse;
+
+        const grad = g.createRadialGradient(s.x,s.y, 0, s.x,s.y, rr*6);
+        grad.addColorStop(0, `hsla(${s.hue}, 95%, 75%, 0.95)`);
+        grad.addColorStop(0.15, `hsla(${s.hue}, 95%, 65%, 0.35)`);
+        grad.addColorStop(1, `hsla(${(s.hue+40)%360}, 95%, 65%, 0)`);
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(s.x,s.y,rr*6,0,Math.PI*2);
+        g.fill();
+
+        // Tiny bright core
+        g.fillStyle = "rgba(255,255,255,0.85)";
+        g.beginPath();
+        g.arc(s.x,s.y,rr*0.85,0,Math.PI*2);
+        g.fill();
+      }
+      g.restore();
     }
 
-    // Update UI text
-    scoreEl.textContent = String(Math.floor(state.score));
-    comboEl.textContent = "x" + state.combo;
+    function drawDrones(g){
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      for (const d of drones){
+        const glow = g.createRadialGradient(d.x,d.y, 0, d.x,d.y, d.r*5);
+        glow.addColorStop(0, `hsla(${d.hue}, 95%, 65%, 0.55)`);
+        glow.addColorStop(0.2, `hsla(${(d.hue+40)%360}, 95%, 60%, 0.18)`);
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = glow;
+        g.beginPath();
+        g.arc(d.x,d.y,d.r*5,0,Math.PI*2);
+        g.fill();
 
-    // pulse charge influences hue (pretty feedback)
-    player.hue = (player.hue + dt*(0.04 + 0.18*player.pulseCharge)) % 1;
+        g.fillStyle = `hsla(${d.hue}, 95%, 62%, 0.9)`;
+        g.beginPath();
+        g.arc(d.x,d.y,d.r,0,Math.PI*2);
+        g.fill();
 
-    // hide toast after movement/pulse
-    if (mouseDown || ix||iy) toast.style.display = 'none';
-  }
+        // inner highlight
+        g.fillStyle = "rgba(255,255,255,0.35)";
+        g.beginPath();
+        g.arc(d.x - d.r*0.25, d.y - d.r*0.25, d.r*0.35, 0, Math.PI*2);
+        g.fill();
+      }
+      g.restore();
+    }
 
-  // ======= Rendering (juice) =======
-  function drawBackground(g){
-    // dynamic nebula gradient
-    const t = state.t;
-    const grad = g.createLinearGradient(0,0,W,H);
-    grad.addColorStop(0, `rgb(7,10,18)`);
-    grad.addColorStop(0.45, `rgb(${12+Math.floor(6*Math.sin(t*0.2))}, ${10}, ${26})`);
-    grad.addColorStop(1, `rgb(6,9,18)`);
-    g.fillStyle = grad;
-    g.fillRect(0,0,W,H);
+    function drawTrail(g){
+      const pts = trail.pts;
+      if (pts.length < 2) return;
 
-    // star dust
-    g.save();
-    g.globalAlpha = 0.14;
-    for (let i=0;i< (HQ?140:90);i++){
-      const x = (noise2(i*7.13+t*0.03, i*1.77) * W);
-      const y = (noise2(i*2.31, i*9.19+t*0.02) * H);
-      const r = (0.7 + noise2(i*3.3, t*0.1
+      g.save();
+      g.lineJoin = "round";
+      g.lineCap = "round";
+      g.globalCompositeOperation = "lighter";
+
+      // Glow layers (thick -> thin)
+      for (let layer = 0; layer < 3; layer++){
+        const w = [16, 9, 4][layer];
+        const a = [0.18, 0.28, 0.55][layer];
+        g.lineWidth = w;
+
+        const hue = (player.hue + layer*18) % 360;
+        g.strokeStyle = `hsla(${hue}, 95%, 68%, ${a})`;
+
+        g.beginPath();
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let i=1;i<pts.length-1;i++){
+          const p0 = pts[i];
+          const p1 = pts[i+1];
+          const mx = (p0.x + p1.x)/2;
+          const my = (p0.y + p1.y)/2;
+          g.quadraticCurveTo(p0.x, p0.y, mx, my);
+        }
+        g.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+        g.stroke();
+      }
+
+      g.restore();
+    }
+
+    function drawPlayer(g){
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      const hue = player.hue;
+
+      // Comet glow
+      const grad = g.createRadialGradient(player.x,player.y, 0, player.x,player.y, 80);
+      grad.addColorStop(0, `hsla(${hue}, 95%, 75%, ${player.dmgTimer>0?0.35:0.55})`);
+      grad.addColorStop(0.18, `hsla(${(hue+35)%360}, 95%, 65%, 0.16)`);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(player.x,player.y,80,0,Math.PI*2);
+      g.fill();
+
+      // Core
+      const blink = player.dmgTimer>0 && (Math.floor(performance.now()/90)%2===0);
+      g.fillStyle = blink ? "rgba(255,255,255,0.35)" : `hsla(${hue}, 95%, 68%, 0.92)`;
+      g.beginPath();
+      g.arc(player.x,player.y, player.r, 0, Math.PI*2);
+      g.fill();
+
+      // Specular
+      g.fillStyle = "rgba(255,255,255,0.35)";
+      g.beginPath();
+      g.arc(player.x - player.r*0.25, player.y - player.r*0.25, player.r*0.35, 0, Math.PI*2);
+      g.fill();
+
+      g.restore();
+    }
+
+    function drawParticles(g){
+      if (!particles.length) return;
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      for (const p of particles){
+        const t = p.life / p.max;
+        const alpha = clamp(t,0,1);
+        g.fillStyle = `hsla(${p.hue}, 95%, 70%, ${0.75*alpha})`;
+        g.beginPath();
+        g.arc(p.x,p.y, p.r*(0.6 + (1-alpha)*0.6), 0, Math.PI*2);
+        g.fill();
+      }
+      g.restore();
+    }
+
+    function render(){
+      // Scene render (to offscreen)
+      sctx.clearRect(0,0,W,H);
+      drawStarfield(sctx);
+
+      // Slight vignette
+      sctx.save();
+      const vig = sctx.createRadialGradient(W*0.5,H*0.55, Math.min(W,H)*0.2, W*0.5,H*0.55, Math.max(W,H)*0.75);
+      vig.addColorStop(0, "rgba(0,0,0,0)");
+      vig.addColorStop(1, "rgba(0,0,0,0.55)");
+      sctx.fillStyle = vig;
+      sctx.fillRect(0,0,W,H);
+      sctx.restore();
+
+      drawVoids(sctx);
+      drawSparks(sctx);
+      drawDrones(sctx);
+      drawTrail(sctx);
+      drawParticles(sctx);
+      drawPlayer(sctx);
+
+      // Bloom pass (blurred scene additively)
+      bctx.clearRect(0,0,W,H);
+      bctx.save();
+      bctx.globalCompositeOperation = "source-over";
+      bctx.filter = "blur(14px)";
+      bctx.globalAlpha = 0.85;
+      bctx.drawImage(scene, 0, 0, W, H);
+      bctx.restore();
+
+      // Composite to screen
+      ctx.clearRect(0,0,W,H);
+
+      // Base
+      ctx.drawImage(scene, 0, 0, W, H);
+
+      // Bloom add
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(bloom, 0, 0, W, H);
+      ctx.restore();
+
+      // Crisp top highlights (second small blur)
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.55;
+      ctx.filter = "blur(4px)";
+      ctx.drawImage(scene, 0, 0, W, H);
+      ctx.filter = "none";
+      ctx.restore();
+
+      // Small HUD hint for combo (subtle)
+      if (started && combo > 1 && comboTimer > 0){
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.font = "700 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial";
+        ctx.textAlign = "left";
+        ctx.fillText(`Combo x${combo}`, 18, 74);
+        ctx.restore();
+      }
+    }
+
+    // ---------- Main loop ----------
+    function loop(now){
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+      update(dt);
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // init
+    reset();
+    requestAnimationFrame(loop);
+  })();
+  </script>
+</body>
+</html>
