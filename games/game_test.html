@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dodge the Squares</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; margin: 0; background: #0b0e14; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .wrap { height: 100%; display: grid; place-items: center; padding: 16px; }
+    canvas { background: #0f1522; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+    .hud {
+      width: min(820px, 96vw);
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 10px; gap: 12px; color: rgba(255,255,255,.85); font-size: 14px;
+    }
+    .kbd {
+      border: 1px solid rgba(255,255,255,.18);
+      border-bottom-width: 2px;
+      padding: 2px 8px; border-radius: 10px;
+      background: rgba(255,255,255,.06);
+      font-variant-numeric: tabular-nums;
+    }
+    .pill { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+    a { color: #9ad0ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <canvas id="game" width="820" height="460" aria-label="Dodge the Squares"></canvas>
+      <div class="hud">
+        <div class="pill">
+          Move: <span class="kbd">WASD</span> / <span class="kbd">Arrows</span>
+          • Restart: <span class="kbd">R</span>
+        </div>
+        <div class="pill">
+          Score: <span id="score">0</span> • Best: <span id="best">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      const scoreEl = document.getElementById("score");
+      const bestEl = document.getElementById("best");
+
+      const W = canvas.width, H = canvas.height;
+
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const rand = (a, b) => a + Math.random() * (b - a);
+
+      // Persistent best score
+      const BEST_KEY = "dodge_best_v1";
+      let best = Number(localStorage.getItem(BEST_KEY) || 0);
+      bestEl.textContent = best;
+
+      // Input
+      const keys = new Set();
+      window.addEventListener("keydown", (e) => {
+        const k = e.key.toLowerCase();
+        keys.add(k);
+        if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault();
+        if (k === "r") reset();
+      }, { passive: false });
+
+      window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+      // Game state
+      const player = {
+        x: W * 0.25, y: H * 0.5,
+        r: 12,
+        speed: 260, // px/sec
+        invuln: 0
+      };
+
+      let hazards = [];
+      let t = 0;
+      let score = 0;
+      let alive = true;
+
+      function spawnHazard() {
+        // Spawn from right side with some vertical drift
+        const size = rand(14, 34);
+        hazards.push({
+          x: W + size + rand(0, 120),
+          y: rand(size, H - size),
+          s: size,
+          vx: -rand(140, 320) * (1 + Math.min(score / 120, 1.5)),
+          vy: rand(-60, 60),
+          spin: rand(-2, 2),
+          a: rand(0, Math.PI * 2)
+        });
+      }
+
+      function reset() {
+        t = 0;
+        score = 0;
+        alive = true;
+        hazards = [];
+        player.x = W * 0.25;
+        player.y = H * 0.5;
+        player.invuln = 0;
+        for (let i = 0; i < 6; i++) spawnHazard();
+        scoreEl.textContent = "0";
+      }
+
+      function circleRectHit(cx, cy, cr, rx, ry, rw, rh) {
+        const nx = clamp(cx, rx, rx + rw);
+        const ny = clamp(cy, ry, ry + rh);
+        const dx = cx - nx, dy = cy - ny;
+        return (dx*dx + dy*dy) <= cr*cr;
+      }
+
+      // Main loop
+      let last = performance.now();
+      reset();
+
+      function update(dt) {
+        if (!alive) return;
+
+        // Movement
+        const up = keys.has("w") || keys.has("arrowup");
+        const down = keys.has("s") || keys.has("arrowdown");
+        const left = keys.has("a") || keys.has("arrowleft");
+        const right = keys.has("d") || keys.has("arrowright");
+
+        let ix = (right ? 1 : 0) - (left ? 1 : 0);
+        let iy = (down ? 1 : 0) - (up ? 1 : 0);
+        if (ix !== 0 || iy !== 0) {
+          const len = Math.hypot(ix, iy);
+          ix /= len; iy /= len;
+        }
+
+        player.x = clamp(player.x + ix * player.speed * dt, player.r, W - player.r);
+        player.y = clamp(player.y + iy * player.speed * dt, player.r, H - player.r);
+
+        // Difficulty curve
+        t += dt;
+        score += dt * 10;
+        scoreEl.textContent = Math.floor(score);
+
+        // Spawn rate increases over time
+        const targetCount = 6 + Math.floor(score / 25);
+        while (hazards.length < Math.min(targetCount, 26)) spawnHazard();
+
+        // Update hazards
+        for (const h of hazards) {
+          h.x += h.vx * dt;
+          h.y += h.vy * dt;
+          h.a += h.spin * dt;
+
+          // bounce vertically
+          if (h.y < h.s) { h.y = h.s; h.vy *= -1; }
+          if (h.y > H - h.s) { h.y = H - h.s; h.vy *= -1; }
+
+          // recycle if offscreen left
+          if (h.x < -h.s - 40) {
+            h.x = W + h.s + rand(0, 160);
+            h.y = rand(h.s, H - h.s);
+            h.vx = -rand(160, 340) * (1 + Math.min(score / 140, 1.7));
+            h.vy = rand(-80, 80);
+            h.spin = rand(-3, 3);
+          }
+        }
+
+        // Collisions
+        if (player.invuln > 0) player.invuln -= dt;
+
+        if (player.invuln <= 0) {
+          for (const h of hazards) {
+            const rx = h.x - h.s * 0.5, ry = h.y - h.s * 0.5, rw = h.s, rh = h.s;
+            if (circleRectHit(player.x, player.y, player.r, rx, ry, rw, rh)) {
+              alive = false;
+              // Save best
+              const finalScore = Math.floor(score);
+              if (finalScore > best) {
+                best = finalScore;
+                localStorage.setItem(BEST_KEY, String(best));
+                bestEl.textContent = best;
+              }
+            }
+          }
+        }
+      }
+
+      function render() {
+        // background
+        ctx.fillStyle = "#0f1522";
+        ctx.fillRect(0, 0, W, H);
+
+        // subtle grid
+        ctx.save();
+        ctx.globalAlpha = 0.08;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+        ctx.restore();
+
+        // hazards
+        for (const h of hazards) {
+          ctx.save();
+          ctx.translate(h.x, h.y);
+          ctx.rotate(h.a);
+          ctx.fillStyle = "rgba(255, 90, 90, 0.92)";
+          ctx.fillRect(-h.s/2, -h.s/2, h.s, h.s);
+          ctx.restore();
+        }
+
+        // player
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        const blink = player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0;
+        ctx.fillStyle = blink ? "rgba(160,220,255,.55)" : "rgba(120, 200, 255, 0.95)";
+        ctx.beginPath();
+        ctx.arc(0, 0, player.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // overlay if dead
+        if (!alive) {
+          ctx.save();
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, W, H);
+
+          ctx.fillStyle = "rgba(255,255,255,0.92)";
+          ctx.font = "700 44px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.textAlign = "center";
+          ctx.fillText("Game Over", W/2, H/2 - 24);
+
+          ctx.font = "500 18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.fillStyle = "rgba(255,255,255,0.78)";
+          ctx.fillText(`Score: ${Math.floor(score)}   •   Best: ${best}`, W/2, H/2 + 12);
+          ctx.fillText("Press R to restart", W/2, H/2 + 44);
+
+          ctx.restore();
+        }
+      }
+
+      function loop(now) {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+        update(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
