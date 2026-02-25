@@ -248,8 +248,8 @@
       </div>
 
       <label for="vars">Template Variables (JSON array)</label>
-      <textarea id="vars">["Bruno","12345"]</textarea>
-      <div class="hint">Maps to {{1}}, {{2}} in the template body. Example: <span class="mono">["Bruno","12345"]</span></div>
+      <textarea id="vars">["Juan","12345"]</textarea>
+      <div class="hint">Maps to {{1}}, {{2}} in the template body. Example: <span class="mono">["Juan","12345"]</span></div>
 
       <!-- Advanced options collapsed by default -->
       <details id="advanced">
@@ -447,7 +447,7 @@
       if (!tpl) throw new Error("Template not found.");
 
       const vars = safeJsonParse(varsEl.value, null);
-      if (!Array.isArray(vars)) throw new Error("Template Variables must be a JSON array, e.g. [\"Bruno\",\"12345\"]");
+      if (!Array.isArray(vars)) throw new Error("Template Variables must be a JSON array, e.g. [\"Juan\",\"12345\"]");
 
       const components = [];
 
