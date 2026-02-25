@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WhatsApp HSM Simulator (Compact)</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --card:#121a33;
+      --text:#e7ecff;
+      --muted:#aab3d6;
+      --accent:#6aa8ff;
+      --danger:#ff6a6a;
+      --ok:#59d499;
+      --border:rgba(255,255,255,.12);
+      --field:rgba(255,255,255,.07);
+      --fieldBorder:rgba(255,255,255,.14);
+      --shadow: 0 10px 30px rgba(0,0,0,.28);
+      --radius:14px;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      padding:12px;
+      font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(900px 600px at 20% 0%, #101a3a 0%, var(--bg) 55%);
+      color:var(--text);
+    }
+
+    /* Constrain to narrow widget width */
+    .wrap{
+      max-width: 460px;   /* good for ~25% screen width */
+      margin:0 auto;
+    }
+
+    header{
+      padding:6px 4px 10px;
+    }
+    h1{
+      margin:0 0 4px;
+      font-size:16px;
+      letter-spacing:.2px;
+    }
+    .sub{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+
+    .card{
+      background: rgba(18,26,51,.92);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding:12px;
+      box-shadow: var(--shadow);
+    }
+
+    .stack{ display:flex; flex-direction:column; gap:10px; }
+    .sectionTitle{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin:0 0 6px;
+      font-size:12px;
+      color:#dbe4ff;
+      text-transform:uppercase;
+      letter-spacing:.22px;
+      opacity:.92;
+    }
+    .pill{
+      font-size:11px;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      color:var(--muted);
+      background: rgba(255,255,255,.05);
+      white-space:nowrap;
+    }
+
+    label{
+      display:block;
+      font-size:11px;
+      color:var(--muted);
+      margin:8px 0 6px;
+    }
+    input,select,textarea{
+      width:100%;
+      background: var(--field);
+      border:1px solid var(--fieldBorder);
+      border-radius: 12px;
+      color:var(--text);
+      padding:10px 10px;
+      outline:none;
+      font-size:13px;
+    }
+    textarea{
+      min-height:92px;
+      resize: vertical;
+      font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+      line-height:1.35;
+    }
+    input:disabled, select:disabled, textarea:disabled{
+      opacity:.6;
+      cursor:not-allowed;
+    }
+
+    .hint{
+      margin-top:6px;
+      font-size:11px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .mono{ font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace; }
+
+    /* Compact two-up ONLY when width allows; still single column overall */
+    .miniRow{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:8px;
+    }
+    @media (max-width: 360px){
+      .miniRow{ grid-template-columns: 1fr; }
+    }
+
+    details{
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,.03);
+      overflow:hidden;
+    }
+    details > summary{
+      cursor:pointer;
+      list-style:none;
+      padding:10px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      font-size:12px;
+      color:#dbe4ff;
+      user-select:none;
+    }
+    details > summary::-webkit-details-marker{ display:none; }
+    .chev{
+      opacity:.7;
+      font-size:12px;
+    }
+    details[open] .chev{ transform: rotate(180deg); }
+
+    .detailsBody{
+      padding:0 10px 10px;
+      border-top:1px solid var(--border);
+    }
+
+    /* Sticky bottom action bar (great in narrow widget) */
+    .actionsSticky{
+      position: sticky;
+      bottom: 0;
+      margin-top:10px;
+      padding-top:10px;
+      background: linear-gradient(to top, rgba(11,16,32,1) 55%, rgba(11,16,32,0));
+    }
+    .btnRow{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    button{
+      cursor:pointer;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(106,168,255,.14);
+      color:var(--text);
+      padding:10px 10px;
+      border-radius: 12px;
+      font-weight:700;
+      font-size:13px;
+      flex: 1 1 auto;
+      min-width: 110px;
+    }
+    button.secondary{
+      background: rgba(255,255,255,.06);
+      font-weight:600;
+    }
+    button.danger{
+      background: rgba(255,106,106,.14);
+      border-color: rgba(255,106,106,.25);
+    }
+
+    .status{
+      margin:8px 2px 0;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .ok{ color:var(--ok); font-weight:800; }
+    .bad{ color:var(--danger); font-weight:800; }
+
+    /* Output textareas compact */
+    .outArea{ min-height:130px; }
+    .logArea{ min-height:130px; }
+
+    /* Tiny footer note */
+    .tiny{
+      margin-top:10px;
+      font-size:11px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <h1>WhatsApp HSM Simulator</h1>
+      <p class="sub">Compact single-column UI for narrow agent widgets (~25% screen width).</p>
+    </header>
+
+    <div class="card stack">
+      <div class="sectionTitle">
+        <span>Message Builder</span>
+        <span class="pill" id="pill">ready</span>
+      </div>
+
+      <label for="to">Recipient (E.164)</label>
+      <input id="to" placeholder="+5491122334455" value="+5491122334455" />
+
+      <label for="template">Template</label>
+      <select id="template"></select>
+
+      <div class="miniRow">
+        <div>
+          <label for="language">Language</label>
+          <select id="language">
+            <option value="en_US">en_US</option>
+            <option value="es_AR" selected>es_AR</option>
+            <option value="pt_BR">pt_BR</option>
+          </select>
+        </div>
+        <div>
+          <label for="channel">Channel Label</label>
+          <input id="channel" value="whatsapp" />
+        </div>
+      </div>
+
+      <label for="vars">Template Variables (JSON array)</label>
+      <textarea id="vars">["Bruno","12345"]</textarea>
+      <div class="hint">Maps to {{1}}, {{2}} in the template body. Example: <span class="mono">["Bruno","12345"]</span></div>
+
+      <!-- Advanced options collapsed by default -->
+      <details id="advanced">
+        <summary>
+          <span>Advanced</span>
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="detailsBody">
+          <div class="miniRow">
+            <div>
+              <label for="mode">Send Mode</label>
+              <select id="mode">
+                <option value="simulate" selected>simulate</option>
+                <option value="post">HTTP POST</option>
+              </select>
+            </div>
+            <div>
+              <label for="sender">Sender / From (optional)</label>
+              <input id="sender" placeholder="e.g., wa:+14155552671" />
+            </div>
+          </div>
+
+          <label for="endpoint">POST Endpoint</label>
+          <input id="endpoint" placeholder="https://your-webhook.example/send" disabled />
+
+          <div class="miniRow">
+            <div>
+              <label for="namespace">Template Namespace (optional)</label>
+              <input id="namespace" placeholder="your_namespace_if_needed" />
+            </div>
+            <div>
+              <label for="headerType">Header Type</label>
+              <select id="headerType">
+                <option value="none" selected>none</option>
+                <option value="text">text</option>
+                <option value="image">image</option>
+                <option value="document">document</option>
+                <option value="video">video</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="headerValue">Header Value</label>
+          <input id="headerValue" placeholder="Text or Media URL" disabled />
+
+          <label for="buttons">Buttons (optional, JSON)</label>
+          <textarea id="buttons" placeholder='[{"type":"quick_reply","text":"Yes"},{"type":"quick_reply","text":"No"}]'></textarea>
+          <div class="hint">Only for simulation/demo unless your webhook maps it to a provider format.</div>
+        </div>
+      </details>
+
+      <!-- Output collapsed by default -->
+      <details id="output">
+        <summary>
+          <span>Output</span>
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="detailsBody">
+          <label>Generated Payload</label>
+          <textarea id="out" class="outArea" readonly></textarea>
+
+          <label>Response / Logs</label>
+          <textarea id="log" class="logArea" readonly></textarea>
+        </div>
+      </details>
+
+      <div class="status" id="status"></div>
+
+      <div class="actionsSticky">
+        <div class="btnRow">
+          <button id="buildBtn">Build</button>
+          <button id="sendBtn">Send</button>
+          <button id="resetBtn" class="secondary">Reset</button>
+        </div>
+      </div>
+
+      <div class="tiny">
+        If embedded in an iframe/widget, this page emits <span class="mono">window.parent.postMessage()</span>
+        events (built/send/response/reset).
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Templates you can customize ---
+    const TEMPLATES = [
+      {
+        id: "order_update",
+        displayName: "Order Update (2 vars)",
+        name: "order_update",
+        bodyVars: 2,
+        header: { type: "none" },
+        example: ["Bruno", "12345"]
+      },
+      {
+        id: "appointment_reminder",
+        displayName: "Appointment Reminder (3 vars, text header)",
+        name: "appointment_reminder",
+        bodyVars: 3,
+        header: { type: "text", example: "Appointment Reminder" },
+        example: ["Bruno", "25/02/2026", "10:30"]
+      },
+      {
+        id: "promo_image",
+        displayName: "Promo (1 var, image header)",
+        name: "promo_image",
+        bodyVars: 1,
+        header: { type: "image", example: "https://example.com/promo.jpg" },
+        example: ["Bruno"]
+      }
+    ];
+
+    const $ = (id) => document.getElementById(id);
+
+    const toEl = $("to");
+    const nsEl = $("namespace");
+    const langEl = $("language");
+    const tplEl = $("template");
+    const varsEl = $("vars");
+    const headerTypeEl = $("headerType");
+    const headerValueEl = $("headerValue");
+    const buttonsEl = $("buttons");
+    const modeEl = $("mode");
+    const endpointEl = $("endpoint");
+    const channelEl = $("channel");
+    const senderEl = $("sender");
+
+    const outEl = $("out");
+    const logEl = $("log");
+    const statusEl = $("status");
+    const pillEl = $("pill");
+
+    function initTemplates() {
+      tplEl.innerHTML = "";
+      TEMPLATES.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.displayName;
+        tplEl.appendChild(opt);
+      });
+    }
+
+    function setStatus(kind, msg) {
+      if (!msg) { statusEl.textContent = ""; return; }
+      const cls = kind === "ok" ? "ok" : "bad";
+      statusEl.innerHTML = `<span class="${cls}">${kind.toUpperCase()}</span> — ${msg}`;
+    }
+
+    function log(line) {
+      const ts = new Date().toISOString();
+      logEl.value = `[${ts}] ${line}\n` + logEl.value;
+    }
+
+    function safeJsonParse(text, fallback) {
+      if (!text || !text.trim()) return fallback;
+      try { return JSON.parse(text); }
+      catch { return fallback; }
+    }
+
+    function syncUI() {
+      // Mode / endpoint
+      const mode = modeEl.value;
+      endpointEl.disabled = mode !== "post";
+
+      // Header enablement
+      const ht = headerTypeEl.value;
+      headerValueEl.disabled = ht === "none";
+      headerValueEl.placeholder =
+        ht === "text" ? "Header text" :
+        (ht === "none" ? "" : "Media URL (https://...)");
+
+      // Template defaults
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value) || TEMPLATES[0];
+      if (tpl) {
+        // If vars isn't a JSON array, replace with example
+        const parsed = safeJsonParse(varsEl.value, null);
+        if (!Array.isArray(parsed)) {
+          varsEl.value = JSON.stringify(tpl.example || []);
+        }
+        // Suggest header type/value from template if empty
+        if ((headerTypeEl.value === "none" || !headerTypeEl.value) && tpl.header?.type) {
+          headerTypeEl.value = tpl.header.type || "none";
+        }
+        if (!headerValueEl.value && tpl.header?.example && headerTypeEl.value !== "none") {
+          headerValueEl.value = tpl.header.example;
+        }
+      }
+    }
+
+    function buildPayload() {
+      const to = (toEl.value || "").trim();
+      if (!to.startsWith("+")) throw new Error("Recipient must be E.164, e.g. +5491122334455");
+
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value);
+      if (!tpl) throw new Error("Template not found.");
+
+      const vars = safeJsonParse(varsEl.value, null);
+      if (!Array.isArray(vars)) throw new Error("Template Variables must be a JSON array, e.g. [\"Bruno\",\"12345\"]");
+
+      const components = [];
+
+      // Header
+      const headerType = headerTypeEl.value;
+      const headerValue = (headerValueEl.value || "").trim();
+      if (headerType !== "none") {
+        if (!headerValue) throw new Error("Header Value is required for the selected header type.");
+        if (headerType === "text") {
+          components.push({ type: "header", parameters: [{ type: "text", text: headerValue }] });
+        } else {
+          components.push({
+            type: "header",
+            parameters: [{ type: headerType, [headerType]: { link: headerValue } }]
+          });
+        }
+      }
+
+      // Body
+      components.push({
+        type: "body",
+        parameters: vars.map(v => ({ type: "text", text: String(v) }))
+      });
+
+      // Buttons (optional)
+      const buttons = safeJsonParse(buttonsEl.value, null);
+      if (Array.isArray(buttons) && buttons.length) {
+        components.push({ type: "buttons", buttons });
+      }
+
+      const payload = {
+        channel: channelEl.value || "whatsapp",
+        to,
+        from: senderEl.value || undefined,
+        template: {
+          namespace: nsEl.value || undefined,
+          name: tpl.name,
+          language: { code: langEl.value },
+          components
+        },
+        meta: {
+          builtAt: new Date().toISOString(),
+          simulator: "github.io-whatsapp-hsm-form-compact"
+        }
+      };
+
+      return JSON.parse(JSON.stringify(payload)); // remove undefined
+    }
+
+    function pretty(obj) { return JSON.stringify(obj, null, 2); }
+
+    function notifyParent(type, data) {
+      try { window.parent?.postMessage({ type, data }, "*"); } catch {}
+    }
+
+    async function send() {
+      pillEl.textContent = "sending…";
+      setStatus("", "");
+
+      const payload = buildPayload();
+      outEl.value = pretty(payload);
+
+      // Auto-open Output when sending (useful in narrow UI)
+      $("output").open = true;
+
+      const mode = modeEl.value;
+
+      if (mode === "simulate") {
+        log("SIMULATE send -> payload built");
+        notifyParent("WHATSAPP_HSM_SIMULATED_SEND", payload);
+
+        await new Promise(r => setTimeout(r, 350));
+
+        const resp = {
+          ok: true,
+          messageId: "sim_" + Math.random().toString(16).slice(2),
+          status: "accepted",
+          at: new Date().toISOString()
+        };
+        log("SIMULATE response -> " + pretty(resp));
+        notifyParent("WHATSAPP_HSM_SIMULATED_RESPONSE", resp);
+        setStatus("ok", `Simulated send accepted. messageId=${resp.messageId}`);
+        pillEl.textContent = "sent (sim)";
+        return;
+      }
+
+      const url = (endpointEl.value || "").trim();
+      if (!url) throw new Error("POST Endpoint is required in HTTP POST mode.");
+
+      log("POST send -> " + url);
+      notifyParent("WHATSAPP_HSM_POST_SEND", { url, payload });
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const text = await r.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch {}
+
+      log(`POST response (${r.status}) -> ` + (parsed ? pretty(parsed) : text));
+      notifyParent("WHATSAPP_HSM_POST_RESPONSE", { status: r.status, body: parsed ?? text });
+
+      if (r.ok) {
+        setStatus("ok", `POST succeeded (${r.status}).`);
+        pillEl.textContent = "sent";
+      } else {
+        setStatus("bad", `POST failed (${r.status}). Check logs.`);
+        pillEl.textContent = "error";
+      }
+    }
+
+    $("buildBtn").addEventListener("click", () => {
+      try {
+        const payload = buildPayload();
+        outEl.value = pretty(payload);
+        $("output").open = true;
+        log("Payload built");
+        setStatus("ok", "Payload built successfully.");
+        pillEl.textContent = "built";
+        notifyParent("WHATSAPP_HSM_BUILT", payload);
+      } catch (e) {
+        setStatus("bad", e.message);
+        log("ERROR: " + e.message);
+        pillEl.textContent = "error";
+      }
+    });
+
+    $("sendBtn").addEventListener("click", async () => {
+      try { await send(); }
+      catch (e) {
+        setStatus("bad", e.message);
+        log("ERROR: " + e.message);
+        pillEl.textContent = "error";
+      }
+    });
+
+    $("resetBtn").addEventListener("click", () => {
+      toEl.value = "+5491122334455";
+      nsEl.value = "";
+      langEl.value = "es_AR";
+      channelEl.value = "whatsapp";
+      senderEl.value = "";
+      headerTypeEl.value = "none";
+      headerValueEl.value = "";
+      buttonsEl.value = "";
+      modeEl.value = "simulate";
+      endpointEl.value = "";
+      varsEl.value = '["Bruno","12345"]';
+      outEl.value = "";
+      logEl.value = "";
+      setStatus("", "");
+      pillEl.textContent = "ready";
+      $("advanced").open = false;
+      $("output").open = false;
+      syncUI();
+      log("Reset");
+      notifyParent("WHATSAPP_HSM_RESET", {});
+    });
+
+    headerTypeEl.addEventListener("change", syncUI);
+    modeEl.addEventListener("change", syncUI);
+    tplEl.addEventListener("change", () => {
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value);
+      if (tpl?.example) varsEl.value = JSON.stringify(tpl.example);
+      headerTypeEl.value = tpl?.header?.type || "none";
+      headerValueEl.value = tpl?.header?.example || "";
+      syncUI();
+    });
+
+    // Init
+    initTemplates();
+    syncUI();
+    log("Ready (compact UI)");
+  </script>
+</body>
+</html>
