@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WhatsApp HSM Simulator</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #121a33;
+      --text: #e7ecff;
+      --muted: #aab3d6;
+      --accent: #6aa8ff;
+      --danger: #ff6a6a;
+      --ok: #59d499;
+      --border: rgba(255,255,255,.12);
+    }
+    body {
+      margin: 0; padding: 24px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, #101a3a 0%, var(--bg) 55%);
+      color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .2px; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.4; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: rgba(18,26,51,.92);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 10px 35px rgba(0,0,0,.25);
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: #dbe4ff;
+      letter-spacing: .25px;
+      text-transform: uppercase;
+      opacity: .9;
+    }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+    input, select, textarea {
+      width: 100%;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 10px 10px;
+      outline: none;
+      font-size: 14px;
+    }
+    textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+
+    .btns { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+    button {
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(106,168,255,.14);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    button.secondary { background: rgba(255,255,255,.06); }
+    button.danger { background: rgba(255,106,106,.14); border-color: rgba(255,106,106,.25); }
+    .pill {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: rgba(255,255,255,.05);
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .status .ok { color: var(--ok); font-weight: 700; }
+    .status .bad { color: var(--danger); font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .tiny { font-size: 12px; color: var(--muted); line-height: 1.35; margin-top: 10px; }
+    .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>WhatsApp HSM (Template) Simulator</h1>
+    <p class="sub">
+      Pick a template, fill recipient + variables, and generate a WhatsApp template payload.
+      Use <span class="mono">Simulation</span> mode to demo in a widget, or POST to your own endpoint.
+    </p>
+
+    <div class="grid">
+      <!-- LEFT: form -->
+      <div class="card">
+        <h2>Message Builder</h2>
+
+        <label for="to">Recipient (E.164)</label>
+        <input id="to" placeholder="+5491122334455" value="+5491122334455" />
+
+        <div class="row">
+          <div>
+            <label for="namespace">Template Namespace (optional)</label>
+            <input id="namespace" placeholder="your_namespace_if_needed" />
+            <div class="hint">Some providers require namespace; Meta Cloud API doesn’t.</div>
+          </div>
+          <div>
+            <label for="language">Language</label>
+            <select id="language">
+              <option value="en_US">en_US</option>
+              <option value="es_AR" selected>es_AR</option>
+              <option value="pt_BR">pt_BR</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="template">Template</label>
+        <select id="template"></select>
+
+        <div class="row">
+          <div>
+            <label for="channel">Channel Label</label>
+            <input id="channel" placeholder="whatsapp" value="whatsapp" />
+          </div>
+          <div>
+            <label for="sender">Sender / From (optional)</label>
+            <input id="sender" placeholder="e.g., wa:+14155552671" />
+          </div>
+        </div>
+
+        <label for="vars">Template Variables (JSON array)</label>
+        <textarea id="vars">["Bruno","12345"]</textarea>
+        <div class="hint">Example: <span class="mono">["Bruno","12345"]</span> maps to {{1}}, {{2}} in the template body.</div>
+
+        <div class="row">
+          <div>
+            <label for="headerType">Header Type</label>
+            <select id="headerType">
+              <option value="none" selected>none</option>
+              <option value="text">text</option>
+              <option value="image">image</option>
+              <option value="document">document</option>
+              <option value="video">video</option>
+            </select>
+          </div>
+          <div>
+            <label for="headerValue">Header Value</label>
+            <input id="headerValue" placeholder="Text or Media URL" disabled />
+          </div>
+        </div>
+
+        <label for="buttons">Buttons (optional, JSON)</label>
+        <textarea id="buttons" placeholder='[{"type":"quick_reply","text":"Yes"},{"type":"quick_reply","text":"No"}]'></textarea>
+        <div class="hint">If your template defines buttons, you can include button components here for simulation.</div>
+
+        <div class="row">
+          <div>
+            <label for="mode">Send Mode</label>
+            <select id="mode">
+              <option value="simulate" selected>simulate (no network)</option>
+              <option value="post">HTTP POST (to your endpoint)</option>
+            </select>
+          </div>
+          <div>
+            <label for="endpoint">POST Endpoint</label>
+            <input id="endpoint" placeholder="https://your-webhook.example/send" disabled />
+          </div>
+        </div>
+
+        <div class="btns">
+          <button id="buildBtn">Build Payload</button>
+          <button id="sendBtn">Send</button>
+          <button id="resetBtn" class="secondary">Reset</button>
+          <span class="pill" id="pill">ready</span>
+        </div>
+
+        <div class="tiny">
+          Tip: If you’re embedding this page inside a Genesys Cloud widget/iframe, you can also use
+          <span class="mono">window.postMessage()</span> to notify the parent of the “send” event (see JS).
+        </div>
+      </div>
+
+      <!-- RIGHT: output -->
+      <div class="card">
+        <h2>Output</h2>
+
+        <label>Generated Payload</label>
+        <textarea id="out" readonly></textarea>
+
+        <label>Response / Logs</label>
+        <textarea id="log" readonly></textarea>
+
+        <div class="status" id="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Templates you can customize ---
+    // "bodyVars" describes how many body variables exist in the template ({{1}}, {{2}} ...).
+    // "header" optionally describes header style (text/media).
+    const TEMPLATES = [
+      {
+        id: "order_update",
+        displayName: "Order Update (2 vars)",
+        name: "order_update",
+        bodyVars: 2,
+        header: { type: "none" },
+        example: ["Bruno", "12345"]
+      },
+      {
+        id: "appointment_reminder",
+        displayName: "Appointment Reminder (3 vars, text header)",
+        name: "appointment_reminder",
+        bodyVars: 3,
+        header: { type: "text", example: "Appointment Reminder" },
+        example: ["Bruno", "25/02/2026", "10:30"]
+      },
+      {
+        id: "promo_image",
+        displayName: "Promo (1 var, image header)",
+        name: "promo_image",
+        bodyVars: 1,
+        header: { type: "image", example: "https://example.com/promo.jpg" },
+        example: ["Bruno"]
+      }
+    ];
+
+    // --- DOM helpers ---
+    const $ = (id) => document.getElementById(id);
+
+    const toEl = $("to");
+    const nsEl = $("namespace");
+    const langEl = $("language");
+    const tplEl = $("template");
+    const varsEl = $("vars");
+    const headerTypeEl = $("headerType");
+    const headerValueEl = $("headerValue");
+    const buttonsEl = $("buttons");
+    const modeEl = $("mode");
+    const endpointEl = $("endpoint");
+    const channelEl = $("channel");
+    const senderEl = $("sender");
+
+    const outEl = $("out");
+    const logEl = $("log");
+    const statusEl = $("status");
+    const pillEl = $("pill");
+
+    // Populate template dropdown
+    function initTemplates() {
+      tplEl.innerHTML = "";
+      TEMPLATES.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.displayName;
+        tplEl.appendChild(opt);
+      });
+    }
+
+    function setStatus(kind, msg) {
+      if (!msg) { statusEl.textContent = ""; return; }
+      const cls = kind === "ok" ? "ok" : "bad";
+      statusEl.innerHTML = `<span class="${cls}">${kind.toUpperCase()}</span> — ${msg}`;
+    }
+
+    function log(line) {
+      const ts = new Date().toISOString();
+      logEl.value = `[${ts}] ${line}\n` + logEl.value;
+    }
+
+    function safeJsonParse(text, fallback) {
+      if (!text || !text.trim()) return fallback;
+      try { return JSON.parse(text); }
+      catch { return fallback; }
+    }
+
+    // Enable/disable fields based on choices
+    function syncUI() {
+      const mode = modeEl.value;
+      endpointEl.disabled = mode !== "post";
+      endpointEl.style.opacity = mode !== "post" ? 0.6 : 1;
+
+      const ht = headerTypeEl.value;
+      headerValueEl.disabled = ht === "none";
+      headerValueEl.placeholder =
+        ht === "text" ? "Header text" :
+        (ht === "none" ? "" : "Media URL (https://...)");
+
+      // Load template defaults
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value) || TEMPLATES[0];
+      if (tpl) {
+        // Set header defaults based on template suggestion (only if user hasn't typed)
+        if (tpl.header?.type && headerTypeEl.value === "none" && tpl.header.type !== "none") {
+          headerTypeEl.value = tpl.header.type;
+        }
+        if (!headerValueEl.value && tpl.header?.example && headerTypeEl.value !== "none") {
+          headerValueEl.value = tpl.header.example;
+        }
+        // Set variables example if current vars isn't valid JSON array
+        const parsed = safeJsonParse(varsEl.value, null);
+        if (!Array.isArray(parsed)) {
+          varsEl.value = JSON.stringify(tpl.example || [], null, 0);
+        }
+      }
+    }
+
+    // Build a WhatsApp Template payload (generic, provider-agnostic).
+    // You can map this to your provider/Genesys integration in your webhook.
+    function buildPayload() {
+      const to = (toEl.value || "").trim();
+      if (!to.startsWith("+")) {
+        throw new Error("Recipient must be E.164, e.g. +5491122334455");
+      }
+
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value);
+      if (!tpl) throw new Error("Template not found.");
+
+      const vars = safeJsonParse(varsEl.value, null);
+      if (!Array.isArray(vars)) throw new Error("Template Variables must be a JSON array, e.g. [\"Bruno\",\"12345\"]");
+
+      // Build components
+      const components = [];
+
+      // Header (optional)
+      const headerType = headerTypeEl.value;
+      const headerValue = (headerValueEl.value || "").trim();
+      if (headerType !== "none") {
+        if (!headerValue) throw new Error("Header Value is required for the selected header type.");
+        if (headerType === "text") {
+          components.push({
+            type: "header",
+            parameters: [{ type: "text", text: headerValue }]
+          });
+        } else {
+          // image/document/video
+          components.push({
+            type: "header",
+            parameters: [{
+              type: headerType,
+              [headerType]: { link: headerValue }
+            }]
+          });
+        }
+      }
+
+      // Body variables
+      const bodyParams = vars.map(v => ({ type: "text", text: String(v) }));
+      components.push({
+        type: "body",
+        parameters: bodyParams
+      });
+
+      // Buttons (optional)
+      const buttons = safeJsonParse(buttonsEl.value, null);
+      if (Array.isArray(buttons) && buttons.length) {
+        // This structure varies by provider; keeping a simple sim-friendly representation.
+        components.push({
+          type: "buttons",
+          buttons
+        });
+      }
+
+      const payload = {
+        channel: channelEl.value || "whatsapp",
+        to,
+        from: senderEl.value || undefined,
+        template: {
+          namespace: nsEl.value || undefined,
+          name: tpl.name,
+          language: { code: langEl.value },
+          components
+        },
+        meta: {
+          builtAt: new Date().toISOString(),
+          simulator: "github.io-whatsapp-hsm-form"
+        }
+      };
+
+      // Remove undefined fields for cleanliness
+      return JSON.parse(JSON.stringify(payload));
+    }
+
+    function pretty(obj) {
+      return JSON.stringify(obj, null, 2);
+    }
+
+    // Optional: notify parent window (useful if embedded in an iframe widget)
+    function notifyParent(type, data) {
+      try {
+        window.parent?.postMessage({ type, data }, "*");
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    async function send() {
+      pillEl.textContent = "sending…";
+      setStatus("", "");
+      const payload = buildPayload();
+      outEl.value = pretty(payload);
+
+      const mode = modeEl.value;
+
+      if (mode === "simulate") {
+        log("SIMULATE send -> payload built");
+        notifyParent("WHATSAPP_HSM_SIMULATED_SEND", payload);
+
+        // Fake a network delay
+        await new Promise(r => setTimeout(r, 450));
+
+        const resp = {
+          ok: true,
+          messageId: "sim_" + Math.random().toString(16).slice(2),
+          status: "accepted",
+          at: new Date().toISOString()
+        };
+        log("SIMULATE response -> " + pretty(resp));
+        notifyParent("WHATSAPP_HSM_SIMULATED_RESPONSE", resp);
+        setStatus("ok", `Simulated send accepted. messageId=${resp.messageId}`);
+        pillEl.textContent = "sent (sim)";
+        return;
+      }
+
+      // POST mode
+      const url = (endpointEl.value || "").trim();
+      if (!url) throw new Error("POST Endpoint is required in HTTP POST mode.");
+
+      log("POST send -> " + url);
+      notifyParent("WHATSAPP_HSM_POST_SEND", { url, payload });
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const text = await r.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { /* ignore */ }
+
+      log(`POST response (${r.status}) -> ` + (parsed ? pretty(parsed) : text));
+      notifyParent("WHATSAPP_HSM_POST_RESPONSE", { status: r.status, body: parsed ?? text });
+
+      if (r.ok) {
+        setStatus("ok", `POST succeeded (${r.status}).`);
+        pillEl.textContent = "sent";
+      } else {
+        setStatus("bad", `POST failed (${r.status}). Check logs.`);
+        pillEl.textContent = "error";
+      }
+    }
+
+    // Events
+    $("buildBtn").addEventListener("click", () => {
+      try {
+        const payload = buildPayload();
+        outEl.value = pretty(payload);
+        log("Payload built");
+        setStatus("ok", "Payload built successfully.");
+        pillEl.textContent = "built";
+        notifyParent("WHATSAPP_HSM_BUILT", payload);
+      } catch (e) {
+        setStatus("bad", e.message);
+        log("ERROR: " + e.message);
+        pillEl.textContent = "error";
+      }
+    });
+
+    $("sendBtn").addEventListener("click", async () => {
+      try {
+        await send();
+      } catch (e) {
+        setStatus("bad", e.message);
+        log("ERROR: " + e.message);
+        pillEl.textContent = "error";
+      }
+    });
+
+    $("resetBtn").addEventListener("click", () => {
+      toEl.value = "+5491122334455";
+      nsEl.value = "";
+      langEl.value = "es_AR";
+      channelEl.value = "whatsapp";
+      senderEl.value = "";
+      headerTypeEl.value = "none";
+      headerValueEl.value = "";
+      buttonsEl.value = "";
+      modeEl.value = "simulate";
+      endpointEl.value = "";
+      varsEl.value = '["Bruno","12345"]';
+      outEl.value = "";
+      logEl.value = "";
+      setStatus("", "");
+      pillEl.textContent = "ready";
+      syncUI();
+      log("Reset");
+      notifyParent("WHATSAPP_HSM_RESET", {});
+    });
+
+    headerTypeEl.addEventListener("change", syncUI);
+    modeEl.addEventListener("change", syncUI);
+    tplEl.addEventListener("change", () => {
+      // When template changes, suggest example variables
+      const tpl = TEMPLATES.find(t => t.id === tplEl.value);
+      if (tpl?.example) varsEl.value = JSON.stringify(tpl.example);
+      // Suggest header type/value from template
+      headerTypeEl.value = tpl?.header?.type || "none";
+      headerValueEl.value = tpl?.header?.example || "";
+      syncUI();
+    });
+
+    // Init
+    initTemplates();
+    syncUI();
+    log("Ready");
+  </script>
+</body>
+</html>
